@@ -10,15 +10,23 @@ cd ~/Develop/KateSearches/KateSearches
 claude
 ```
 
-## 2. Запушить в GitHub (из Claude Code — там есть твой git-auth)
+## 2. Запушить в GitHub (из Claude Code / терминала — там есть твой git-auth)
 
-Локальный коммит уже сделан. Останется:
+Локальный коммит уже сделан (ветка `master`, remote `origin` прописан). Из-за ограничений
+песочницы Cowork остались служебные `.lock`-файлы в `.git` и не переименовалась ветка —
+чинится на твоей машине одной пачкой команд:
 
 ```bash
-git remote add origin https://github.com/ipolotsky/kate-searches.git
+cd ~/Develop/KateSearches/KateSearches
+# 1) убрать stale-локи, которые песочница не смогла удалить
+rm -f .git/HEAD.lock .git/refs/heads/master.lock .git/objects/maintenance.lock
+# 2) переименовать ветку в main и запушить
 git branch -M main
-git push -u origin main
+git push -u origin main      # origin уже = https://github.com/ipolotsky/kate-searches.git
 ```
+
+Если `git` будет ругаться «Another git process seems to be running» — это про те же `.lock`,
+просто повтори `rm -f .git/*.lock .git/**/*.lock` и продолжи.
 
 ## 3. Подключить Flowbite MCP
 
