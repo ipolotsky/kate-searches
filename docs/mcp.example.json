@@ -1,0 +1,9 @@
+{
+  "_comment": "Шаблон .mcp.json для Claude Code. Скопируй в корень репо как .mcp.json и подставь реальную команду запуска Flowbite MCP. Точную команду сервера внутри контейнера flowbite-mcp-pro-100 подставит владелец (docker exec -i ... <cmd>).",
+  "mcpServers": {
+    "flowbite": {
+      "command": "docker",
+      "args": ["exec", "-i", "flowbite-mcp-pro-100", "REPLACE_WITH_MCP_SERVER_START_COMMAND"]
+    }
+  }
+}

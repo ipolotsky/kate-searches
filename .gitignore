@@ -1,0 +1,32 @@
+# deps
+node_modules/
+.pnpm-store/
+**/.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# build
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# data / caches
+.turbo/
+coverage/
+.crawl4ai/
+*.sqlite

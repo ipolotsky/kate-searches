@@ -1,0 +1,16 @@
+{
+  "name": "kate-searches",
+  "private": true,
+  "version": "0.0.1",
+  "description": "SaaS: news monitoring -> relevance scoring -> brand-voice SEO/AEO draft generation",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "test": "pnpm --filter web test"
+  }
+}

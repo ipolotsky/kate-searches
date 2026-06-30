@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "KateSearches"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "sources": "Sources",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Drafts",
+    "subtitle": "Fresh, relevant stories — already drafted for you",
+    "empty": "No new drafts yet. They'll appear here after the daily run.",
+    "sections": {
+      "new": "New",
+      "inProgress": "In progress",
+      "archive": "Archive"
+    }
+  },
+  "post": {
+    "score": "Relevance",
+    "source": "Source",
+    "actions": {
+      "edit": "Edit",
+      "publish": "Publish",
+      "reject": "Reject",
+      "archive": "Archive"
+    }
+  }
+}
