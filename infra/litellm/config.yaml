@@ -1,0 +1,18 @@
+# Конфиг LiteLLM proxy. Роутинг моделей по стадиям пайплайна + трейс в Langfuse.
+model_list:
+  - model_name: gemini/gemini-2.0-flash-lite
+    litellm_params:
+      model: gemini/gemini-2.0-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: openai/gpt-5-mini
+    litellm_params:
+      model: openai/gpt-5-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  success_callback: ["langfuse"]
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # TODO(M1+): per-tenant virtual keys с hard-бюджетом (ai_budget_usd_month тенанта).

@@ -13,7 +13,7 @@ dependencies = [
     "trafilatura>=2.0",
     "instructor>=1.6",
     "litellm>=1.50",
-    "langfuse>=2.50",
+    "langfuse>=2.50,<3",
     "celery[redis]>=5.4",
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",
@@ -36,6 +36,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: требует запущенный Supabase CLI стек (RUN_DB_TESTS=1)",
+    "live: реальный вызов LLM-провайдера (RUN_LIVE_LLM=1 + ключ)",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

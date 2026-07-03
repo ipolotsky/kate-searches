@@ -7,9 +7,31 @@
     "sources": "Источники",
     "settings": "Настройки"
   },
+  "auth": {
+    "login": {
+      "title": "Вход",
+      "email": "Email",
+      "password": "Пароль",
+      "submit": "Войти",
+      "noAccount": "Ещё нет аккаунта?",
+      "registerLink": "Создать"
+    },
+    "register": {
+      "title": "Регистрация",
+      "company": "Название компании",
+      "email": "Email",
+      "password": "Пароль",
+      "submit": "Создать аккаунт",
+      "haveAccount": "Уже есть аккаунт?",
+      "loginLink": "Войти"
+    },
+    "signOut": "Выйти",
+    "errorGeneric": "Что-то пошло не так. Проверь данные и попробуй ещё раз."
+  },
   "dashboard": {
     "title": "Черновики",
     "subtitle": "Свежие релевантные инфоповоды — уже в черновиках",
+    "signedInAs": "Вы вошли как {email}",
     "empty": "Новых черновиков пока нет. Появятся после дневного прогона.",
     "sections": {
       "new": "Новые",
