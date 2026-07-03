@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.pipeline.dedup import canonicalize_url, is_fresh
 
@@ -16,12 +16,12 @@ def test_canonicalize_lowercases_host_not_path_query():
 
 
 def test_is_fresh_today_true_old_false():
-    now = datetime(2026, 6, 30, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
     assert is_fresh(now - timedelta(hours=5), tz_now=now) is True
     assert is_fresh(now - timedelta(days=3), tz_now=now) is False
 
 
 def test_is_fresh_handles_naive_datetime():
-    now = datetime(2026, 6, 30, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
     naive = datetime(2026, 6, 30, 9, 0)
     assert is_fresh(naive, tz_now=now) is True

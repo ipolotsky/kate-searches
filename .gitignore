@@ -25,6 +25,9 @@ build/
 .vscode/
 *.log
 
+# claude local settings
+.claude/settings.local.json
+
 # data / caches
 .turbo/
 coverage/

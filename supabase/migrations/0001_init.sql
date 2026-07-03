@@ -169,8 +169,15 @@ create index if not exists idx_ai_usage_tenant_time on ai_usage(tenant_id, creat
 -- ─────────────────────────────────────────── RLS
 
 -- Helper: tenant_id текущего пользователя из его записи в users.
+-- security definer: тело читает users в обход RLS. Без этого политика users_isolation
+-- вызывает current_tenant_id(), который снова читает users под RLS → бесконечная рекурсия
+-- политики (infinite recursion detected in policy for relation "users").
 create or replace function current_tenant_id() returns uuid
-language sql stable as $$
+language sql
+stable
+security definer
+set search_path = public, auth
+as $$
   select tenant_id from users where id = auth.uid()
 $$;
 
@@ -185,27 +192,56 @@ begin
   end loop;
 end $$;
 
--- tenants: видно только свой тенант
-create policy tenants_isolation on tenants
-  using (id = current_tenant_id());
+-- Control-таблицы (tenants, users, ai_usage): authenticated только ЧИТАЕТ свой скоуп.
+-- Запись — под service_role (провижининг, пайплайн, метеринг). Без SELECT-only участник
+-- тенанта мог бы сам крутить бюджет/лимиты, эскалировать role до owner или снести тенант.
+drop policy if exists tenants_isolation on tenants;
+drop policy if exists tenants_select on tenants;
+create policy tenants_select on tenants
+  for select using (id = current_tenant_id());
 
--- users: видно пользователей своего тенанта
-create policy users_isolation on users
-  using (tenant_id = current_tenant_id());
+drop policy if exists users_isolation on users;
+drop policy if exists users_select on users;
+create policy users_select on users
+  for select using (tenant_id = current_tenant_id());
 
--- Остальные таблицы: полная изоляция по tenant_id (select/insert/update/delete)
+drop policy if exists ai_usage_isolation on ai_usage;
+drop policy if exists ai_usage_select on ai_usage;
+create policy ai_usage_select on ai_usage
+  for select using (tenant_id = current_tenant_id());
+
+-- Контент тенанта: полный CRUD в рамках своего tenant_id.
 do $$
 declare t text;
 begin
   foreach t in array array[
-    'brand_profiles','products','sources','articles','posts','feedback','ai_usage'
+    'brand_profiles','products','sources','articles','posts','feedback'
   ] loop
+    execute format('drop policy if exists %1$s_isolation on %1$I;', t);
     execute format(
       'create policy %1$s_isolation on %1$I using (tenant_id = current_tenant_id()) with check (tenant_id = current_tenant_id());',
       t
     );
   end loop;
 end $$;
+
+-- ─────────────────────────────────────────── Гранты для supabase-ролей
+-- RLS включён, но сам по себе доступ к ТАБЛИЦЕ как объекту нужно выдать грантами,
+-- иначе роль authenticated получает "permission denied for table" ещё до RLS.
+-- Доступ к СТРОКАМ всё равно ограничен политиками выше.
+
+grant usage on schema public to anon, authenticated, service_role;
+
+grant select, insert, update, delete on all tables in schema public
+  to authenticated, service_role;
+
+-- Control-таблицы read-only для authenticated: write рубится и на уровне грантов
+-- (RLS без permissive-политики на запись уже блокирует, это defense-in-depth).
+revoke insert, update, delete on tenants, users, ai_usage from authenticated;
+
+-- Будущие таблицы (миграции M1+) автоматически получат те же гранты.
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated, service_role;
 
 -- ПРИМЕЧАНИЕ: бэкенд-пайплайн и админка ходят под service_role (обходит RLS).
 -- Пользовательские запросы из web идут под anon/authenticated и скоупятся RLS автоматически.

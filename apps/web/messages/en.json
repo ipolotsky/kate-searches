@@ -7,9 +7,31 @@
     "sources": "Sources",
     "settings": "Settings"
   },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "noAccount": "No account yet?",
+      "registerLink": "Create one"
+    },
+    "register": {
+      "title": "Create account",
+      "company": "Company name",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Create account",
+      "haveAccount": "Already have an account?",
+      "loginLink": "Sign in"
+    },
+    "signOut": "Sign out",
+    "errorGeneric": "Something went wrong. Check your details and try again."
+  },
   "dashboard": {
     "title": "Drafts",
     "subtitle": "Fresh, relevant stories — already drafted for you",
+    "signedInAs": "Signed in as {email}",
     "empty": "No new drafts yet. They'll appear here after the daily run.",
     "sections": {
       "new": "New",
