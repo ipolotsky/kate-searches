@@ -1,4 +1,4 @@
-.PHONY: up down web api lint test test-integration db-reset db-migrate install
+.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate install
 
 up:            ## поднять локальную инфру (Supabase CLI + Redis)
 	supabase start
@@ -17,6 +17,12 @@ web:           ## dev-сервер фронта
 
 api:           ## dev-сервер api
 	cd services/api && uvicorn app.main:app --reload
+
+worker:        ## Celery worker (очереди default/fetch/extract)
+	cd services/api && celery -A app.worker.celery_app worker -Q default,fetch,extract -l info
+
+beat:          ## Celery beat (диспетчер дневных прогонов)
+	cd services/api && celery -A app.worker.celery_app beat -l info
 
 lint:          ## линты как в CI
 	cd apps/web && pnpm lint

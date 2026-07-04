@@ -1,17 +1,41 @@
-"""Реестр адаптеров источников.
+"""Адаптеры источников.
 
-Новый тип источника = новый класс, реализующий SourceAdapter, + запись в REGISTRY.
+Новый тип источника = новый класс SourceAdapter с @AdapterRegistry.register.
+Импорт модуля-адаптера ниже регистрирует его в реестре.
 """
 
-from app.adapters.base import Raw, SourceAdapter
-from app.adapters.rss import RssAdapter
+from app.adapters.base import (
+    AdapterCapabilities,
+    BaseAdapter,
+    FetchMode,
+    FetchRequest,
+    FetchResult,
+    FetchStats,
+    Raw,
+    SourceAdapter,
+    State,
+)
+from app.adapters.registry import REGISTRY, AdapterRegistry
+from app.adapters.rss import RssAdapter, RssConfig
+from app.adapters.scraper import ScraperAdapter, ScraperConfig
+from app.adapters.sitemap import SitemapAdapter, SitemapConfig
 
-REGISTRY: dict[str, type[SourceAdapter]] = {
-    "rss": RssAdapter,
-    # "scraper": ScraperAdapter,   # TODO M1: Crawl4AI/Firecrawl
-    # "sitemap": SitemapAdapter,   # TODO M1: news-sitemap
-    # "telegram": TelegramAdapter, # TODO фаза 2
-    # "reddit": RedditAdapter,     # TODO фаза 2
-}
-
-__all__ = ["Raw", "SourceAdapter", "RssAdapter", "REGISTRY"]
+__all__ = [
+    "AdapterCapabilities",
+    "BaseAdapter",
+    "FetchMode",
+    "FetchRequest",
+    "FetchResult",
+    "FetchStats",
+    "Raw",
+    "State",
+    "SourceAdapter",
+    "AdapterRegistry",
+    "REGISTRY",
+    "RssAdapter",
+    "RssConfig",
+    "SitemapAdapter",
+    "SitemapConfig",
+    "ScraperAdapter",
+    "ScraperConfig",
+]

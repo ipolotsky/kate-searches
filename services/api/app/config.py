@@ -32,5 +32,16 @@ class Settings(BaseSettings):
 
     firecrawl_api_key: str = ""
 
+    # Ingestion (M1): identifiable UA, таймауты и троттлинг скрапинга.
+    user_agent: str = "KateSearchesBot/1.0 (+https://katesearches.com/bot)"
+    fetch_timeout_seconds: float = 15.0
+    default_rate_limit_rpm: int = 60
+    robots_cache_ttl_seconds: int = 3600
+    extract_body_min_chars: int = 500
+    near_dup_hamming_threshold: int = 3
+    firecrawl_cost_per_call_usd: float = 0.002
+    ingestion_guards_enabled: bool = True
+    pipeline_run_stale_minutes: int = 30
+
 
 settings = Settings()

@@ -6,13 +6,26 @@ EXPECTED_TABLES = {
     "tenants",
     "users",
     "brand_profiles",
-    "products",
     "sources",
     "articles",
     "posts",
     "feedback",
     "ai_usage",
+    "article_sources",
+    "pipeline_runs",
+    "source_secrets",
 }
+
+
+def test_articles_metadata_mapped_without_clobbering_declarative() -> None:
+    columns = {c.name for c in Base.metadata.tables["articles"].columns}
+    assert "metadata" in columns
+    assert {"duplicate_of", "last_pipeline_run_id"} <= columns
+
+
+def test_pipeline_runs_has_typed_counters() -> None:
+    columns = {c.name for c in Base.metadata.tables["pipeline_runs"].columns}
+    assert {"fetched", "new", "duplicated", "extracted", "failed", "run_date", "mode"} <= columns
 
 
 def test_models_cover_all_tables() -> None:

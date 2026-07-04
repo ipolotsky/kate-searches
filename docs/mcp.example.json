@@ -1,9 +1,9 @@
 {
-  "_comment": "Шаблон .mcp.json для Claude Code. Скопируй в корень репо как .mcp.json и подставь реальную команду запуска Flowbite MCP. Точную команду сервера внутри контейнера flowbite-mcp-pro-100 подставит владелец (docker exec -i ... <cmd>).",
+  "_comment": "Шаблон .mcp.json для Claude Code. Скопировать в корень репо как .mcp.json. Контейнер flowbite-mcp-pro-100 отдаёт MCP по streamable-HTTP на http://localhost:3333/mcp (health: :3333/health, serverInfo flowbite-mcp). Порт 3333 проброшен из докера. .mcp.json в git не коммитим.",
   "mcpServers": {
-    "flowbite": {
-      "command": "docker",
-      "args": ["exec", "-i", "flowbite-mcp-pro-100", "REPLACE_WITH_MCP_SERVER_START_COMMAND"]
+    "flowbite-mcp": {
+      "type": "http",
+      "url": "http://localhost:3333/mcp"
     }
   }
 }

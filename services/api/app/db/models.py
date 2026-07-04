@@ -5,15 +5,17 @@ Pydantic-схемы в app/models/ остаются контрактами па�
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     ForeignKey,
     Integer,
     Numeric,
+    SmallInteger,
     Text,
     UniqueConstraint,
     text,
@@ -39,6 +41,7 @@ class Tenant(Base):
     upsell_threshold_pct: Mapped[int] = mapped_column(Integer, server_default=text("80"))
     default_locale: Mapped[str] = mapped_column(Text, server_default=text("'en'"))
     timezone: Mapped[str] = mapped_column(Text, server_default=text("'UTC'"))
+    pipeline_hour_local: Mapped[int] = mapped_column(SmallInteger, server_default=text("6"))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )
@@ -83,27 +86,6 @@ class BrandProfile(Base):
     )
 
 
-class Product(Base):
-    __tablename__ = "products"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
-    )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
-    )
-    external_id: Mapped[str | None] = mapped_column(Text)
-    name: Mapped[str] = mapped_column(Text)
-    brand: Mapped[str | None] = mapped_column(Text)
-    category: Mapped[str | None] = mapped_column(Text)
-    url: Mapped[str | None] = mapped_column(Text)
-    price: Mapped[Decimal | None] = mapped_column(Numeric)
-    attributes: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
-    created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=text("now()")
-    )
-
-
 class Source(Base):
     __tablename__ = "sources"
 
@@ -122,6 +104,10 @@ class Source(Base):
     state: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     last_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    last_status: Mapped[str | None] = mapped_column(Text)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_error_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )
@@ -159,6 +145,13 @@ class Article(Base):
     status: Mapped[str] = mapped_column(Text, server_default=text("'new'"))
     relevance: Mapped[dict | None] = mapped_column(JSONB)
     relevance_score: Mapped[int | None] = mapped_column(Integer)
+    doc_metadata: Mapped[dict] = mapped_column(
+        "metadata", JSONB, server_default=text("'{}'::jsonb")
+    )
+    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("articles.id", ondelete="SET NULL")
+    )
+    last_pipeline_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )
@@ -182,7 +175,6 @@ class Post(Base):
     json_ld: Mapped[dict | None] = mapped_column(JSONB)
     seo: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     suggested_titles: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
-    linked_products: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     language: Mapped[str | None] = mapped_column(Text)
     ai_model: Mapped[str | None] = mapped_column(Text)
     ai_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric)
@@ -235,6 +227,70 @@ class AiUsage(Base):
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     cost_usd: Mapped[Decimal] = mapped_column(Numeric, server_default=text("0"))
     request_id: Mapped[str | None] = mapped_column(Text)
+    pipeline_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+
+
+class ArticleSource(Base):
+    __tablename__ = "article_sources"
+    __table_args__ = (UniqueConstraint("article_id", "source_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    article_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("articles.id", ondelete="CASCADE")
+    )
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sources.id", ondelete="SET NULL")
+    )
+    external_id: Mapped[str | None] = mapped_column(Text)
+    priority_at_seen: Mapped[int | None] = mapped_column(Integer)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+    __table_args__ = (UniqueConstraint("tenant_id", "run_date", "mode"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    run_date: Mapped[date] = mapped_column(Date)
+    mode: Mapped[str] = mapped_column(Text, server_default=text("'incremental'"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'running'"))
+    started_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fetched: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    new: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    duplicated: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    extracted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    failed: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    stats: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class SourceSecret(Base):
+    __tablename__ = "source_secrets"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    secrets: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )

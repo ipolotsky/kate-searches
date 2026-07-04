@@ -47,23 +47,6 @@ create table if not exists brand_profiles (
   unique (tenant_id)
 );
 
--- ─────────────────────────────────────────── Товары (CSV-загрузка)
-
-create table if not exists products (
-  id          uuid primary key default gen_random_uuid(),
-  tenant_id   uuid not null references tenants(id) on delete cascade,
-  external_id text,
-  name        text not null,
-  brand       text,
-  category    text,
-  url         text,
-  price       numeric,
-  attributes  jsonb not null default '{}'::jsonb,
-  created_at  timestamptz not null default now()
-);
-create index if not exists idx_products_tenant on products(tenant_id);
-create index if not exists idx_products_brand on products(tenant_id, brand);
-
 -- ─────────────────────────────────────────── Источники
 
 create table if not exists sources (
@@ -124,7 +107,6 @@ create table if not exists posts (
   json_ld         jsonb,                     -- AEO: schema.org
   seo             jsonb not null default '{}'::jsonb,    -- meta, headings-инструкции
   suggested_titles text[] not null default '{}',
-  linked_products jsonb not null default '[]'::jsonb,
   language        text,
   ai_model        text,
   ai_cost_usd     numeric,
@@ -185,7 +167,7 @@ do $$
 declare t text;
 begin
   foreach t in array array[
-    'tenants','users','brand_profiles','products','sources',
+    'tenants','users','brand_profiles','sources',
     'articles','posts','feedback','ai_usage'
   ] loop
     execute format('alter table %I enable row level security;', t);
@@ -215,7 +197,7 @@ do $$
 declare t text;
 begin
   foreach t in array array[
-    'brand_profiles','products','sources','articles','posts','feedback'
+    'brand_profiles','sources','articles','posts','feedback'
   ] loop
     execute format('drop policy if exists %1$s_isolation on %1$I;', t);
     execute format(

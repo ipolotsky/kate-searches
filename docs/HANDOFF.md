@@ -1,6 +1,6 @@
 # HANDOFF
 
-Актуальный снимок состояния после M0: что готово, что нужно от владельца, как запускать, как закоммитить и что делать дальше. Все изменения M0 лежат в рабочем дереве (ветка `m0/db-rls`), не закоммичены - коммитит владелец по playbook ниже.
+Актуальный снимок состояния после M0 и M1: что готово, что нужно от владельца, как запускать, как закоммитить и что делать дальше. Статус M1 (ingestion) и починенные по итогам ревью баги — в разделе «Статус M1» ниже. Изменения M1 лежат в рабочем дереве, не закоммичены.
 
 ## Статус M0 (каркас)
 
@@ -114,11 +114,65 @@ Push и PR - обычным флоу (репо `https://github.com/ipolotsky/kat
 
 ## Остаток онбординга
 
-- **Flowbite MCP:** скопировать `docs/mcp.example.json` → `.mcp.json` и подставить команду запуска MCP внутри контейнера `flowbite-mcp-pro-100`.
+- **Flowbite MCP:** контейнер `flowbite-mcp-pro-100` поднят в докере, слушает streamable-HTTP на `http://localhost:3333/mcp` (health: `:3333/health`, serverInfo `flowbite-mcp`). Чтобы подключить в репо — скопировать `docs/mcp.example.json` → `.mcp.json` (HTTP-транспорт уже прописан, команду подставлять не нужно). `.mcp.json` в git не коммитим. Реально пригодится на M4 (UI на Flowbite).
 
-## Что дальше (M1)
+## Продуктовая корректировка: убраны товары (после M0, до M1)
 
-Ingestion: RSS + sitemap + Crawl4AI адаптеры, extract + dedup + novelty, постановка задач в Celery. Точки входа уже есть: `services/api/app/adapters/` (RSS реализован, остальные - TODO), `app/pipeline/dedup.py` (канонизация + свежесть), эндпоинт `POST /internal/pipeline/run` (заглушка). См. `docs/04_mvp_spec.md` §7.
+Продуктовая рамка уточнена: черновик — симбиоз «инфоповод × бренд». Новость органично связывается с брендом через его профиль (позиционирование, экспертиза, угол), без каталога товаров. Продуктового слоя (SKU) в продукте больше нет. Правки затронули часть файлов из M0-плейбука выше, при коммите учитывать:
+
+- **Схема (`supabase/migrations/0001_init.sql`):** удалена таблица `products` (+ индексы), удалён `posts.linked_products`, `products` убран из RLS-массивов. Схема ещё не в проде (локальный Supabase) - правим 0001 на месте, отдельная миграция не нужна.
+- **api-код:** удалены ORM `Product` (`app/db/models.py`, `app/db/__init__.py`) и `posts.linked_products`; из `test_db_models.py` убран `products`; в `app/models/drafts.py` убраны `LinkedProduct`/`linked_products`, добавлено поле `brand_tie_in` (угол симбиоза); `app/pipeline/generation.py` переписан под «инфоповод × бренд», убран параметр `products`; в `scoring.py` мелкая правка формулировки. Ruff + `test_db_models` зелёные.
+- **Доки:** `CLAUDE.md`, `README.md`, `docs/00`-`06`, `docs/mcp.example.json` перепаны под новую рамку; поправлен роадмап M3 и открытые вопросы PRD §10 (вопрос про каталог товаров снят).
+- **brand_tie_in** персистится в существующем `posts.seo` (jsonb), отдельная колонка не нужна.
+
+## Статус M1 (ingestion) — готово
+
+Веха M1 реализована целиком по плану `docs/07_m1_ingestion_plan.md` (все 15 задач T1-T15). Полный вертикальный срез `fetch -> normalize -> novelty -> persist -> extract -> dedup` работает, AC-1 доказан интеграционным тестом на реальном Supabase.
+
+Что сделано:
+- **Контракт адаптера** (`app/adapters/base.py`, `cursors.py`, `registry.py`): `SourceAdapter` Protocol с декларативными `AdapterCapabilities`/`config_model`, типизированные курсоры (ETag/Timestamp/SinceId/Page), `AdapterRegistry` с `register`/`describe()` (готовое API для M4-формы источника). `Document.body_is_complete`.
+- **Адаптеры**: RSS (мигрирован, dateless-гейт), sitemap (news-sitemap + sitemap-index), scraper (через `CascadeFetcher`). Все в реестре.
+- **Fetch-слой** (`app/fetch/`): `HttpxFetcher -> Crawl4aiFetcher (extra [scraper]) -> FirecrawlFetcher`, `CascadeFetcher` эскалирует по качеству; `worker/throttle.py` (Redis token-bucket per host), `worker/robots.py` (robots-кэш с TTL, fail-open политика).
+- **Extract** (`app/pipeline/extract.py`): гидратация тела через каскад + trafilatura, пересчёт `content_hash`/`simhash`, `new -> extracted`, учёт COGS платного скрапинга в `ai_usage(stage='extract')`.
+- **Дедуп и новизна** (`app/pipeline/dedup.py`): tz-aware `is_novel` (граница по таймзоне тенанта, backfill по `since`, dateless не проходит), `simhash64`/`hamming` со знаковым bigint-маппингом, кластерный дедуп (content-hash exact + simhash near-dup) с кросс-источниковым priority-тай-брейком.
+- **Персистентность** (`app/db/repositories.py`, миграция `0002_ingestion.sql`): `ArticleRepository`/`SourceRepository`/`PipelineRunRepository`, upsert `ON CONFLICT DO NOTHING`, провенанс `article_sources`, леджер `pipeline_runs`, `source_secrets` (DDL-шов). ORM синхронизирован 1:1.
+- **Оркестрация** (`app/worker/`): Celery-app с result backend (нужен для chord-барьера), топология `dispatch_due_tenants (tz) -> run_tenant_pipeline -> chord(ingest) -> finalize_fetch -> chord(extract) -> dedup_and_finalize`. Синхронный `run_tenant_pipeline_sync` — детерминированный барьер для тестов и ручного прогона.
+- **Эндпоинты** (`app/api/routes.py`): `POST /internal/pipeline/run` (claim + enqueue), `POST /internal/sources/test` (синхронный dry-run с sample/is_novel/warnings, без записи в БД и без платного fetch).
+- **Инфра**: `services/api/Dockerfile`, сервисы `worker`/`beat` в `docker-compose.yml`, make-таргеты `worker`/`beat`, extra `[scraper]` (crawl4ai/playwright не тянется в `make test`).
+
+### Независимый ревью и починенные баги
+
+После реализации прогнан независимый multi-agent adversarial review (4 измерения, верификация каждой находки). Подтверждено и починено 8 дефектов (все с регресс-тестами):
+1. **Зависание прогона (high)**: header-задача chord (`ingest_source`/`extract_article`) при исключении завершалась в FAILURE, из-за чего Celery пропускал body (`finalize_fetch`/`dedup_and_finalize`) и `pipeline_runs` навсегда висел в `running`, а статьи других источников не обрабатывались. Теперь header-задачи никогда не падают в FAILURE (transient ретраятся, остальное -> failed-sentinel), partial-run гарантирован. То же в sync-пути.
+2. **Утечка COGS (high)**: scraper-адаптер включал платный Firecrawl внутри `fetch`, и стоимость терялась мимо `ai_usage`. Теперь `allow_paid=False` в адаптере, платную эскалацию с учётом делает extract.
+3. **Дедуп-цепочки (correctness)**: попарный дедуп мог оставить `duplicate_of`, указывающий на строку, которая сама стала дублем, и обрабатывал лишь один near-dup за проход. Переписан на кластерную модель: единственный канон, все проигравшие линкуются прямо на него.
+4. **robots 5xx (correctness)**: серверная ошибка robots.txt парсилась как правила (HTML-тело), выдавая allow-all. Теперь 5xx/недоступность идёт по fail-open политике без парсинга тела.
+5. **DST-пропуск диспатчера (medium)**: строгое равенство локального часа теряло прогон в день spring-forward. Теперь `>=` час прогона + catch-up зависших `running`-прогонов в `dispatch_due_tenants`.
+6. **Потеря записей sitemap (medium)**: усечение по `max_urls` в document-order двигало курсор мимо невыбранных новых записей. Теперь сортировка по дате ASC — невыбранные дочитываются в следующих прогонах.
+7. **Троттлинг между хостами (low)**: общий Redis token-bucket использовал `time.monotonic` (несопоставим между процессами). Теперь wall-clock `time.time`.
+8. **TRUNCATE-дыра (security, defense-in-depth)**: `authenticated` имел `TRUNCATE` на control- и content-таблицах (обходит RLS, сносит данные всех тенантов). Закрыто в `0002` для всех таблиц. Дыра на control-таблицах M0 (`tenants`/`users`/`ai_usage`) тоже была реальной и закрыта.
+
+Отклонены как невоспроизводимые/по-дизайну: демоут `scored`/`drafted` (заморозка каноничности работает), таймаут `/sources/test` (не воспроизводится).
+
+### Проверка M1
+
+```bash
+make lint                 # ruff чисто
+make test                 # 77 unit зелёных (без БД/ключей/playwright)
+make test-integration     # 11 integration: AC-1, RLS control-таблиц, дедуп-кластер, partial-run
+```
+
+Миграция `0002` идемпотентна (повторный прогон без ошибок). `worker`/`beat` стартуют в docker-compose.
+
+### Хвосты M1 (follow-ups, не блокеры)
+
+- `TransientFetchError`/`PermanentFetchError` — контракт ретраев готов, но адаптеры пока деградируют в warnings, а не поднимают их. Первый адаптер с ретраебельными сетевыми ошибками должен поднимать `TransientFetchError`.
+- Commit-before-enqueue: полностью снимается только транзакционным outbox; сейчас смягчено catch-up-логикой диспатчера (перезапуск зависших `running`-прогонов через `pipeline_run_stale_minutes=30`).
+- Пороги (тонкое тело 500, Hamming <= 3, стоимость Firecrawl-вызова) вынесены в `settings`, калибровать на реальных источниках LOOTON в M6.
+
+## Что дальше (M2)
+
+Скоринг по rubric из `docs/05_ai_pipeline_prompts.md`. Точка прицепа готова: `score_article` вешается group-ом на post-extract барьер `dedup_and_finalize` с гейтом `status='extracted'`; дедуп по контенту уже прошёл, M2 не платит LLM за дубли; `ai_usage(stage='score', pipeline_run_id)` готов. См. `docs/04_mvp_spec.md` §7.
 
 ## Ждём от Kate
 

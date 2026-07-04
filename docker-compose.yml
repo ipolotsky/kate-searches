@@ -13,6 +13,35 @@ services:
       timeout: 3s
       retries: 10
 
+  # Celery worker: стадии ingestion (fetch/extract/dedup). Очереди default/fetch/extract.
+  worker:
+    build: ./services/api
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract", "-l", "info"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Celery beat: heartbeat диспетчера дневных прогонов (per-tenant tz).
+  beat:
+    build: ./services/api
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
+      REDIS_URL: redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # LiteLLM proxy: единый вход к провайдерам, роутинг по стадиям, per-tenant бюджеты.
   litellm:
     image: ghcr.io/berriai/litellm:main-stable

@@ -29,9 +29,10 @@ class Document(BaseModel):
     author: str | None = None
     tags: list[str] = Field(default_factory=list)
     media: list[str] = Field(default_factory=list)
-    published_at: datetime
+    published_at: datetime | None = None
     fetched_at: datetime
     content_hash: str
+    body_is_complete: bool = False
     metadata: dict = Field(default_factory=dict)
 
 

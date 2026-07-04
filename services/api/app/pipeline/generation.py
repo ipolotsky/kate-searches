@@ -14,9 +14,10 @@ SYSTEM_TEMPLATE = """Ты пишешь черновик статьи/поста 
 Следуй стилю этих реальных постов бренда (few-shot):
 {voice_examples}
 
-Задача: на основе новости написать материал-симбиоз «новость × продукт бренда».
-Это НЕ пересказ новости. Найди органичные точки пересечения с тем, что бренд
-продаёт/делает, добавь собственную экспертизу/угол ({unique_angle}).
+Задача: на основе новости написать материал-симбиоз «инфоповод × бренд».
+Это НЕ пересказ новости. Органично вплети инфоповод в бренд — его позиционирование,
+экспертизу и угол ({unique_angle}) — и добавь собственную ценность для аудитории.
+В поле brand_tie_in объясни угол симбиоза: почему этот инфоповод работает на этот бренд.
 
 Требования SEO/AEO (обязательно): answer-first (40-60 слов в начале каждой секции),
 иерархия H1/H2/H3, короткие абзацы/списки, секция FAQ с реальными вопросами,
@@ -25,7 +26,7 @@ SYSTEM_TEMPLATE = """Ты пишешь черновик статьи/поста 
 
 
 def build_messages(
-    doc: Document, score: RelevanceScore, profile: dict, language: str, products: list[dict]
+    doc: Document, score: RelevanceScore, profile: dict, language: str
 ) -> list[dict]:
     system = SYSTEM_TEMPLATE.format(
         company=profile.get("company_name", ""),
@@ -38,8 +39,7 @@ def build_messages(
         f"Новость: «{doc.title}» ({doc.url}), дата {doc.published_at.isoformat()}.\n"
         f"Почему берём: {score.decision_summary}\n"
         f"Тренд: {score.trend_explanation}\n\n"
-        f"Текст новости:\n{doc.body}\n\n"
-        f"Товары бренда (опц.): {products}"
+        f"Текст новости:\n{doc.body}"
     )
     return [
         {"role": "system", "content": system},
@@ -53,11 +53,10 @@ def generate_draft(
     profile: dict,
     tenant_id: str,
     language: str = "en",
-    products: list[dict] | None = None,
 ) -> DraftPost:
     return structured_completion(
         model=settings.llm_model_draft,
-        messages=build_messages(doc, score, profile, language, products or []),
+        messages=build_messages(doc, score, profile, language),
         response_model=DraftPost,
         tenant_id=tenant_id,
         stage="draft",

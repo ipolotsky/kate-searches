@@ -171,7 +171,6 @@ brand_profiles(
   filter_criteria text,           -- свободный текст «что ищем/отбрасываем»
   voice_config jsonb,             -- тон, обороты
   voice_examples jsonb,           -- [{post_text, source_url, why}] -> few-shot
-  product_catalog_url text,       -- опц., для привязки к товарам
   files jsonb,                    -- ссылки на загруженные брендбуки/примеры
   updated_at timestamptz
 )
@@ -207,9 +206,8 @@ posts(
   id uuid pk, tenant_id uuid fk, article_id uuid fk,
   title text, body_markdown text,
   faq jsonb, json_ld jsonb,       -- AEO
-  seo jsonb,                      -- meta, keywords, headings-инструкции
+  seo jsonb,                      -- meta, keywords, headings-инструкции, brand_tie_in
   suggested_titles text[],
-  linked_products jsonb,          -- привязанные товары
   ai_model text, ai_cost_usd numeric,
   status text default 'new',      -- new | in_progress | published | rejected | archived
   created_at timestamptz, updated_at timestamptz
