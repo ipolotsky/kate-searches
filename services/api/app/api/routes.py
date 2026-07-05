@@ -1,6 +1,7 @@
 """REST-эндпоинты сервиса.
 
 /internal/pipeline/run — claim дневного прогона + постановка в Celery.
+/internal/pipeline/generate — on-demand генерация черновиков по scored-статьям тенанта.
 /internal/sources/test — синхронный dry-run адаптера без записи в БД (UI при добавлении источника).
 """
 
@@ -16,7 +17,7 @@ from app.adapters import REGISTRY
 from app.adapters.base import FetchRequest
 from app.db.engine import session_scope
 from app.db.models import Tenant
-from app.db.repositories import PipelineRunRepository
+from app.db.repositories import ArticleRepository, PipelineRunRepository
 from app.pipeline.dedup import _safe_zone, is_novel
 
 router = APIRouter()
@@ -66,6 +67,49 @@ def run_pipeline(req: RunPipelineRequest) -> RunPipelineResponse:
     return RunPipelineResponse(
         tenant_id=req.tenant_id, queued=queued, run_id=str(run_id), detail=detail
     )
+
+
+class GenerateRequest(BaseModel):
+    tenant_id: str
+    article_ids: list[str] | None = None
+
+
+class GenerateResponse(BaseModel):
+    tenant_id: str
+    queued: bool
+    count: int
+    detail: str
+
+
+@router.post("/internal/pipeline/generate", response_model=GenerateResponse)
+def generate_drafts(req: GenerateRequest) -> GenerateResponse:
+    """Сгенерировать черновики по прошедшим отбор статьям тенанта (on-demand).
+
+    По умолчанию — весь scored-хвост; опц. фильтр article_ids для курируемой генерации из дашборда.
+    """
+    tenant_uuid = uuid.UUID(req.tenant_id)
+    article_uuids = [uuid.UUID(a) for a in req.article_ids] if req.article_ids is not None else None
+    with session_scope() as session:
+        count = len(
+            ArticleRepository.scored_articles(session, tenant_uuid, article_ids=article_uuids)
+        )
+
+    if count == 0:
+        return GenerateResponse(
+            tenant_id=req.tenant_id, queued=False, count=0, detail="no scored articles to draft"
+        )
+
+    try:
+        from app.worker.tasks import run_tenant_generation
+
+        run_tenant_generation.delay(req.tenant_id, req.article_ids)
+        queued = True
+        detail = "queued"
+    except Exception as exc:
+        queued = False
+        detail = f"not queued: {exc}"
+
+    return GenerateResponse(tenant_id=req.tenant_id, queued=queued, count=count, detail=detail)
 
 
 class TestSourceRequest(BaseModel):

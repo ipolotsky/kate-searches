@@ -18,8 +18,8 @@ web:           ## dev-сервер фронта
 api:           ## dev-сервер api
 	cd services/api && uvicorn app.main:app --reload
 
-worker:        ## Celery worker (очереди default/fetch/extract/score)
-	cd services/api && celery -A app.worker.celery_app worker -Q default,fetch,extract,score -l info
+worker:        ## Celery worker (очереди default/fetch/extract/score/generate)
+	cd services/api && celery -A app.worker.celery_app worker -Q default,fetch,extract,score,generate -l info
 
 beat:          ## Celery beat (диспетчер дневных прогонов)
 	cd services/api && celery -A app.worker.celery_app beat -l info

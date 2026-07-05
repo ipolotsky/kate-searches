@@ -1,7 +1,7 @@
 """Celery-приложение: broker + result backend на redis.
 
-Result backend включён с M1 — нужен для chord-барьеров дедупа и скоринга и для
-chaining M3. Очереди default/fetch/extract/score с роутингом по имени задачи.
+Result backend включён с M1 — нужен для chord-барьеров дедупа, скоринга и генерации.
+Очереди default/fetch/extract/score/generate с роутингом по имени задачи.
 """
 
 from celery import Celery
@@ -32,10 +32,13 @@ def create_celery() -> Celery:
             "ingest_source": {"queue": "fetch"},
             "extract_article": {"queue": "extract"},
             "score_article": {"queue": "score"},
+            "generate_article": {"queue": "generate"},
             "run_tenant_pipeline": {"queue": "default"},
+            "run_tenant_generation": {"queue": "default"},
             "finalize_fetch": {"queue": "default"},
             "dedup_and_score": {"queue": "default"},
             "finalize_run": {"queue": "default"},
+            "finalize_generation": {"queue": "default"},
             "dispatch_due_tenants": {"queue": "default"},
         },
         beat_schedule={

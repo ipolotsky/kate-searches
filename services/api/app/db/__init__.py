@@ -18,6 +18,7 @@ from app.db.models import (
 from app.db.repositories import (
     ArticleRepository,
     PipelineRunRepository,
+    PostRepository,
     SourceRepository,
     insert_ai_usage,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "AiUsage",
     "insert_ai_usage",
     "ArticleRepository",
+    "PostRepository",
     "SourceRepository",
     "PipelineRunRepository",
 ]

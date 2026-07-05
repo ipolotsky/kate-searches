@@ -12,8 +12,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.db.models import AiUsage, Article, ArticleSource, BrandProfile, PipelineRun, Source
-from app.models import Document
+from app.db.models import AiUsage, Article, ArticleSource, BrandProfile, PipelineRun, Post, Source
+from app.models import Document, DraftPost
 
 _LIVE_STATUSES = ("new", "extracted")
 
@@ -140,6 +140,23 @@ class ArticleRepository:
         )
 
     @staticmethod
+    def scored_articles(
+        session: Session,
+        tenant_id: uuid.UUID,
+        *,
+        article_ids: list[uuid.UUID] | None = None,
+    ) -> list[Article]:
+        """Прошедшие отбор статьи тенанта (status='scored') — кандидаты на генерацию черновика."""
+        query = (
+            select(Article)
+            .where(Article.tenant_id == tenant_id, Article.status == "scored")
+            .order_by(Article.created_at, Article.id)
+        )
+        if article_ids is not None:
+            query = query.where(Article.id.in_(article_ids))
+        return list(session.execute(query).scalars())
+
+    @staticmethod
     def run_counters(session: Session, run_id: uuid.UUID) -> dict:
         rows = session.execute(
             select(Article.status, func.count())
@@ -154,6 +171,7 @@ class ArticleRepository:
             "extracted": by_status.get("extracted", 0),
             "scored": by_status.get("scored", 0),
             "filtered_out": by_status.get("filtered_out", 0),
+            "drafted": by_status.get("drafted", 0),
             "duplicated": by_status.get("duplicate", 0),
             "failed": by_status.get("new", 0),
         }
@@ -286,6 +304,39 @@ class ArticleRepository:
         return bool(session.execute(stmt).rowcount)
 
     @staticmethod
+    def claim_for_draft(session: Session, article_id: uuid.UUID) -> bool:
+        """Атомарный claim scored -> drafting ДО LLM-вызова (guard от конкурентного double-spend).
+
+        Ровно один конкурентный воркер получает rowcount=1; проигравший видит status!='scored'.
+        """
+        stmt = (
+            update(Article)
+            .where(Article.id == article_id, Article.status == "scored")
+            .values(status="drafting")
+        )
+        return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
+    def advance_drafted(session: Session, article_id: uuid.UUID) -> bool:
+        """drafting -> drafted (guard WHERE status='drafting', идемпотентно)."""
+        stmt = (
+            update(Article)
+            .where(Article.id == article_id, Article.status == "drafting")
+            .values(status="drafted")
+        )
+        return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
+    def release_draft_claim(session: Session, article_id: uuid.UUID) -> bool:
+        """Откат drafting -> scored при сбое генерации (статья снова доступна для повтора)."""
+        stmt = (
+            update(Article)
+            .where(Article.id == article_id, Article.status == "drafting")
+            .values(status="scored")
+        )
+        return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
     def upsert_article_source(
         session: Session,
         *,
@@ -307,6 +358,45 @@ class ArticleRepository:
             .on_conflict_do_nothing(index_elements=["article_id", "source_id"])
         )
         session.execute(stmt)
+
+
+class PostRepository:
+    """Персист черновиков: DraftPost -> строка posts (тело + AEO-разметка + атрибуция стоимости)."""
+
+    @staticmethod
+    def create_from_draft(
+        session: Session,
+        *,
+        tenant_id: uuid.UUID,
+        article_id: uuid.UUID,
+        draft: DraftPost,
+        language: str,
+        ai_model: str,
+        ai_cost_usd: float | None,
+    ) -> uuid.UUID:
+        seo = {
+            "meta_description": draft.meta_description,
+            "keywords": draft.keywords,
+            "entities": draft.entities,
+            "brand_tie_in": draft.brand_tie_in,
+            "seo_instructions": draft.seo_instructions,
+        }
+        post = Post(
+            tenant_id=tenant_id,
+            article_id=article_id,
+            title=draft.title,
+            body_markdown=draft.body_markdown,
+            faq=[item.model_dump() for item in draft.faq],
+            json_ld=draft.json_ld,
+            seo=seo,
+            suggested_titles=draft.suggested_titles,
+            language=language,
+            ai_model=ai_model,
+            ai_cost_usd=ai_cost_usd,
+        )
+        session.add(post)
+        session.flush()
+        return post.id
 
 
 class SourceRepository:
@@ -430,7 +520,23 @@ class PipelineRunRepository:
                 extracted=counters.get("extracted", 0),
                 scored=counters.get("scored", 0),
                 filtered_out=counters.get("filtered_out", 0),
+                drafted=counters.get("drafted", 0),
                 failed=counters.get("failed", 0),
                 stats=stats or {},
             )
         )
+
+    @staticmethod
+    def refresh_drafted(session: Session, run_id: uuid.UUID) -> None:
+        """Пересчитать ТОЛЬКО счётчик drafted по финальным статусам статей прогона.
+
+        Генерация идёт отдельным потоком (on-demand) после финализации прогона, поэтому обновляем
+        точечно, не трогая status/finished_at/прочие счётчики уже завершённого прогона.
+        """
+        drafted = (
+            select(func.count())
+            .select_from(Article)
+            .where(Article.last_pipeline_run_id == run_id, Article.status == "drafted")
+            .scalar_subquery()
+        )
+        session.execute(update(PipelineRun).where(PipelineRun.id == run_id).values(drafted=drafted))

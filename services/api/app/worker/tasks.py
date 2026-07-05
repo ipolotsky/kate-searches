@@ -31,6 +31,7 @@ from app.pipeline.dedup import (
     to_unsigned,
 )
 from app.pipeline.extract import extract_article as _extract_article_stage
+from app.pipeline.generation import generate_draft_run as _generate_draft_stage
 from app.pipeline.scoring import score_article_run as _score_article_stage
 from app.worker.celery_app import celery_app
 from app.worker.schedule import local_run_date_if_due
@@ -380,6 +381,51 @@ def run_tenant_pipeline_sync(
     )
 
 
+# ─────────────────────────────────────────── Генерация черновиков (on-demand, отдельный поток)
+
+
+def _scored_candidates(tenant_id, article_ids=None) -> list[str]:
+    """id прошедших отбор статей тенанта (status='scored') — кандидаты на черновик."""
+    tenant_uuid = _uuid(tenant_id)
+    article_uuids = [_uuid(a) for a in article_ids] if article_ids is not None else None
+    with session_scope() as session:
+        return [
+            str(article.id)
+            for article in ArticleRepository.scored_articles(
+                session, tenant_uuid, article_ids=article_uuids
+            )
+        ]
+
+
+def _finalize_generation(results: list[dict]) -> dict:
+    """Обновить счётчик drafted затронутых прогонов + агрегат."""
+    run_ids = {
+        result["run_id"]
+        for result in results
+        if result.get("status") == "drafted" and result.get("run_id")
+    }
+    if run_ids:
+        with session_scope() as session:
+            for run_id in run_ids:
+                PipelineRunRepository.refresh_drafted(session, _uuid(run_id))
+    return {
+        "drafted": sum(1 for result in results if result.get("status") == "drafted"),
+        "skipped": sum(1 for result in results if result.get("status") == "skipped"),
+        "failed": sum(1 for result in results if result.get("status") == "failed"),
+    }
+
+
+def run_tenant_generation_sync(tenant_id, article_ids=None) -> dict:
+    """Синхронная генерация черновиков по scored-хвосту тенанта (для тестов и ручного прогона)."""
+    results: list[dict] = []
+    for article_id in _scored_candidates(tenant_id, article_ids):
+        try:
+            results.append(_generate_draft_stage(article_id))
+        except Exception as exc:
+            results.append({"article_id": article_id, "status": "failed", "error": str(exc)})
+    return _finalize_generation(results)
+
+
 # ─────────────────────────────────────────── Celery-задачи (продакшен, chord-барьер)
 
 
@@ -440,10 +486,9 @@ def ingest_source(self, source_id, run_id, mode="incremental", since=None):
     try:
         return ingest_source_run(source_id, run_id, mode, since)
     except TransientFetchError as exc:
-        try:
-            raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries)))
-        except self.MaxRetriesExceededError:
+        if self.request.retries >= self.max_retries:
             return _ingest_result(source_id, status="failed", warnings=[str(exc)])
+        raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries))) from exc
     except Exception as exc:
         return _ingest_result(source_id, status="failed", warnings=[str(exc)])
 
@@ -489,10 +534,9 @@ def extract_article(self, article_id, run_id):
     try:
         return extract_article_run(article_id, run_id)
     except TransientFetchError as exc:
-        try:
-            raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries)))
-        except self.MaxRetriesExceededError:
+        if self.request.retries >= self.max_retries:
             return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
+        raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries))) from exc
     except Exception as exc:
         return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
 
@@ -536,10 +580,9 @@ def score_article(self, article_id, run_id):
     try:
         return score_article_run(article_id, run_id)
     except transient as exc:
-        try:
-            raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries)))
-        except self.MaxRetriesExceededError:
+        if self.request.retries >= self.max_retries:
             return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
+        raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries))) from exc
     except Exception as exc:
         return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
 
@@ -547,3 +590,48 @@ def score_article(self, article_id, run_id):
 @celery_app.task(name="finalize_run")
 def finalize_run_task(results, tenant_id, run_id, fetch_stats=None):
     return finalize_run(tenant_id, run_id, fetch_stats=fetch_stats or {})
+
+
+# ─────────────────────────────────────────── Генерация черновиков (on-demand chord)
+
+
+@celery_app.task(name="run_tenant_generation")
+def run_tenant_generation(tenant_id, article_ids=None):
+    """Вход on-demand генерации: fan-out черновиков по scored-хвосту -> обновление счётчика."""
+    candidates = _scored_candidates(tenant_id, article_ids)
+    if not candidates:
+        return {"tenant_id": str(tenant_id), "candidates": 0, "drafted": 0}
+    from celery import chord, group
+
+    header = group(generate_article.s(article_id) for article_id in candidates)
+    return chord(header)(finalize_generation.s(tenant_id))
+
+
+@celery_app.task(name="generate_article", bind=True, max_retries=3)
+def generate_article(self, article_id):
+    """Header-задача generate-chord: не падает в FAILURE, иначе finalize_generation не выстрелит.
+
+    Transient-ошибки LLM (rate limit / timeout сильной модели) ретраятся с backoff;
+    остальное возвращает failed-sentinel (инвариант достижимости finalize).
+    """
+    import litellm
+
+    transient = (
+        litellm.RateLimitError,
+        litellm.Timeout,
+        litellm.APIConnectionError,
+        litellm.InternalServerError,
+    )
+    try:
+        return _generate_draft_stage(article_id)
+    except transient as exc:
+        if self.request.retries >= self.max_retries:
+            return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
+        raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries))) from exc
+    except Exception as exc:
+        return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
+
+
+@celery_app.task(name="finalize_generation")
+def finalize_generation(results, tenant_id):
+    return _finalize_generation(results or [])

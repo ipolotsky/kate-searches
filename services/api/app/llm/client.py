@@ -32,6 +32,36 @@ def structured_completion[T: BaseModel](
     session_factory: SessionFactory = session_scope,
 ) -> T:
     """Вызвать LLM и вернуть валидированный Pydantic-объект, записав стоимость в ai_usage."""
+    result, _ = structured_completion_with_usage(
+        model=model,
+        messages=messages,
+        response_model=response_model,
+        tenant_id=tenant_id,
+        stage=stage,
+        user_id=user_id,
+        pipeline_run_id=pipeline_run_id,
+        max_tokens=max_tokens,
+        session_factory=session_factory,
+    )
+    return result
+
+
+def structured_completion_with_usage[T: BaseModel](
+    *,
+    model: str,
+    messages: list[dict],
+    response_model: type[T],
+    tenant_id: str,
+    stage: str,
+    user_id: str | None = None,
+    pipeline_run_id: uuid.UUID | str | None = None,
+    max_tokens: int = 2048,
+    session_factory: SessionFactory = session_scope,
+) -> tuple[T, float]:
+    """Как structured_completion, но дополнительно возвращает стоимость вызова в USD.
+
+    Нужна стадиям, которые пишут стоимость в свою таблицу (posts.ai_cost_usd), не только в ai_usage.
+    """
     import instructor
     import litellm
 
@@ -47,7 +77,7 @@ def structured_completion[T: BaseModel](
         metadata=_metadata(tenant_id=tenant_id, stage=stage, user_id=user_id, trace_id=trace_id),
         **_proxy_params(),
     )
-    _record_usage(
+    cost = _record_usage(
         tenant_id=tenant_id,
         user_id=user_id,
         stage=stage,
@@ -57,7 +87,7 @@ def structured_completion[T: BaseModel](
         pipeline_run_id=pipeline_run_id,
         session_factory=session_factory,
     )
-    return result
+    return result, cost
 
 
 def _proxy_params() -> dict:
@@ -118,8 +148,8 @@ def _record_usage(
     request_id: str,
     pipeline_run_id: uuid.UUID | str | None,
     session_factory: SessionFactory,
-) -> None:
-    """Записать стоимость вызова в ai_usage (зеркало Langfuse для апселла/отчётов)."""
+) -> float:
+    """Записать стоимость вызова в ai_usage (зеркало Langfuse для апселла). Вернуть стоимость."""
     import litellm
 
     try:
@@ -144,3 +174,4 @@ def _record_usage(
                 uuid.UUID(str(pipeline_run_id)) if pipeline_run_id is not None else None
             ),
         )
+    return cost

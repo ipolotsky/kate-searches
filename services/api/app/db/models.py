@@ -279,6 +279,7 @@ class PipelineRun(Base):
     extracted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     scored: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     filtered_out: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    drafted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     failed: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     stats: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
 

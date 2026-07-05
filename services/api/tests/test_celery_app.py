@@ -19,6 +19,8 @@ def test_task_routing_by_name() -> None:
     routes = celery_app.conf.task_routes
     assert routes["ingest_source"]["queue"] == "fetch"
     assert routes["extract_article"]["queue"] == "extract"
+    assert routes["score_article"]["queue"] == "score"
+    assert routes["generate_article"]["queue"] == "generate"
 
 
 def test_beat_dispatch_scheduled() -> None:

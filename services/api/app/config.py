@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     llm_model_score: str = "gemini/gemini-2.0-flash-lite"
     llm_model_draft: str = "openai/gpt-5-mini"
 
+    # Лимит вывода стадии draft. DraftPost (тело ~2k + faq + json_ld + suggested_titles) не влезает
+    # в дефолтные 2048. Плюс gpt-5-mini — reasoning-модель: reasoning-токены тоже идут в этот лимит,
+    # поэтому нужен запас (иначе finish_reason='length' -> IncompleteOutputException у Instructor).
+    llm_draft_max_tokens: int = 16384
+
     # LiteLLM self-host proxy: если base_url задан, вызовы роутятся через него
     # (per-tenant виртуальные ключи/бюджеты). По умолчанию — прямой SDK-вызов.
     litellm_base_url: str = ""
