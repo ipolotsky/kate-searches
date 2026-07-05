@@ -44,6 +44,28 @@ class _FakeSession:
         pass
 
 
+def test_configure_provider_keys_bridges_settings_to_environ(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import os
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "explicit-env-key")
+    monkeypatch.setattr(llm_client.settings, "gemini_api_key", "gem-from-dotenv")
+    monkeypatch.setattr(llm_client.settings, "openai_api_key", "oai-from-dotenv")
+    monkeypatch.setattr(llm_client.settings, "anthropic_api_key", "")
+
+    llm_client._configure_provider_keys()
+
+    # пустой в settings -> из .env прокинут в окружение
+    assert os.environ["GEMINI_API_KEY"] == "gem-from-dotenv"
+    # уже заданный извне ключ не перетирается (setdefault)
+    assert os.environ["OPENAI_API_KEY"] == "explicit-env-key"
+    # пустой ключ провайдера не создаёт переменную окружения
+    assert "ANTHROPIC_API_KEY" not in os.environ
+
+
 def test_structured_completion_writes_ai_usage(monkeypatch: pytest.MonkeyPatch) -> None:
     added: list = []
 
@@ -85,3 +107,36 @@ def test_structured_completion_writes_ai_usage(monkeypatch: pytest.MonkeyPatch) 
     assert row.output_tokens == 200
     assert float(row.cost_usd) == pytest.approx(0.00031)
     assert row.request_id
+    assert row.pipeline_run_id is None
+
+
+def test_structured_completion_attributes_pipeline_run_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    added: list = []
+
+    @contextmanager
+    def fake_factory():
+        yield _FakeSession(added)
+
+    score = _relevance()
+    completion = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5))
+
+    class _FakeCompletions:
+        def create_with_completion(self, **kwargs: object):
+            return score, completion
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions()))
+    monkeypatch.setattr(instructor, "from_litellm", lambda _fn: fake_client)
+    monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.0)
+
+    run_id = uuid.uuid4()
+    llm_client.structured_completion(
+        model="gemini/gemini-2.0-flash-lite",
+        messages=[{"role": "user", "content": "x"}],
+        response_model=RelevanceScore,
+        tenant_id=str(uuid.uuid4()),
+        stage="score",
+        pipeline_run_id=run_id,
+        session_factory=fake_factory,
+    )
+
+    assert added[0].pipeline_run_id == run_id

@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.db.models import AiUsage, Article, ArticleSource, PipelineRun, Source
+from app.db.models import AiUsage, Article, ArticleSource, BrandProfile, PipelineRun, Source
 from app.models import Document
 
 _LIVE_STATUSES = ("new", "extracted")
@@ -152,6 +152,8 @@ class ArticleRepository:
             "fetched": inserted,
             "new": inserted,
             "extracted": by_status.get("extracted", 0),
+            "scored": by_status.get("scored", 0),
+            "filtered_out": by_status.get("filtered_out", 0),
             "duplicated": by_status.get("duplicate", 0),
             "failed": by_status.get("new", 0),
         }
@@ -263,6 +265,27 @@ class ArticleRepository:
         )
 
     @staticmethod
+    def advance_scored(
+        session: Session,
+        article_id: uuid.UUID,
+        *,
+        relevance: dict,
+        relevance_score: int,
+        passed: bool,
+    ) -> bool:
+        """extracted -> scored|filtered_out (guard WHERE status='extracted', идемпотентно)."""
+        stmt = (
+            update(Article)
+            .where(Article.id == article_id, Article.status == "extracted")
+            .values(
+                status="scored" if passed else "filtered_out",
+                relevance=relevance,
+                relevance_score=relevance_score,
+            )
+        )
+        return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
     def upsert_article_source(
         session: Session,
         *,
@@ -348,6 +371,14 @@ class SourceRepository:
         )
 
 
+class BrandProfileRepository:
+    @staticmethod
+    def get_by_tenant(session: Session, tenant_id: uuid.UUID) -> BrandProfile | None:
+        return session.execute(
+            select(BrandProfile).where(BrandProfile.tenant_id == tenant_id)
+        ).scalar_one_or_none()
+
+
 class PipelineRunRepository:
     @staticmethod
     def claim_run(
@@ -397,6 +428,8 @@ class PipelineRunRepository:
                 new=counters.get("new", 0),
                 duplicated=counters.get("duplicated", 0),
                 extracted=counters.get("extracted", 0),
+                scored=counters.get("scored", 0),
+                filtered_out=counters.get("filtered_out", 0),
                 failed=counters.get("failed", 0),
                 stats=stats or {},
             )

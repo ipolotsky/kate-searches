@@ -13,10 +13,10 @@ services:
       timeout: 3s
       retries: 10
 
-  # Celery worker: стадии ingestion (fetch/extract/dedup). Очереди default/fetch/extract.
+  # Celery worker: стадии пайплайна (fetch/extract/dedup/score). Очереди default/fetch/extract/score.
   worker:
     build: ./services/api
-    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract", "-l", "info"]
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract,score", "-l", "info"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
       REDIS_URL: redis://redis:6379/0

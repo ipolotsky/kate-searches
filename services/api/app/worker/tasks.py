@@ -2,8 +2,9 @@
 
 Стадии реализованы как чистые sync-функции (session_scope внутри) — детерминированный
 барьер для E2E и переиспользование эндпоинтом. Celery-задачи — тонкие обёртки: продакшен
-concurrency через chord(group(extract))(dedup_and_finalize), барьер гарантирует, что дедуп
-видит финальные тела. tenant_id всегда берётся из строки sources (защита кросс-тенант записи).
+concurrency через chord(group(extract))(dedup_and_score) и chord(group(score))(finalize_run),
+барьеры гарантируют, что дедуп видит финальные тела, а скоринг — только выживших после дедупа.
+tenant_id всегда берётся из строки sources (защита кросс-тенант записи).
 """
 
 import uuid
@@ -30,6 +31,7 @@ from app.pipeline.dedup import (
     to_unsigned,
 )
 from app.pipeline.extract import extract_article as _extract_article_stage
+from app.pipeline.scoring import score_article_run as _score_article_stage
 from app.worker.celery_app import celery_app
 from app.worker.schedule import local_run_date_if_due
 
@@ -201,11 +203,22 @@ def extract_article_run(article_id, run_id) -> dict:
         return _extract_article_stage(session, _uuid(article_id), pipeline_run_id=_uuid(run_id))
 
 
-def dedup_and_finalize_run(tenant_id, run_id, *, fetch_stats: dict | None = None) -> dict:
-    """Дедуп по финальному телу (content-hash exact + simhash near-dup) + финализация прогона."""
+def score_article_run(article_id, run_id) -> dict:
+    with session_scope() as session:
+        return _score_article_stage(session, _uuid(article_id), _uuid(run_id))
+
+
+def dedup_and_score_run(tenant_id, run_id, *, fetch_stats: dict | None = None) -> dict:
+    """Sync-ядро терминала: дедуп -> скоринг выживших -> финализация (барьер по построению)."""
+    dedup_articles(tenant_id, run_id)
+    score_run(tenant_id, run_id)
+    return finalize_run(tenant_id, run_id, fetch_stats=fetch_stats)
+
+
+def dedup_articles(tenant_id, run_id) -> None:
+    """Дедуп по финальному телу (content-hash exact + simhash near-dup) после extract-барьера."""
     tenant_uuid = _uuid(tenant_id)
     run_uuid = _uuid(run_id)
-    fetch_stats = fetch_stats or {}
     threshold = settings.near_dup_hamming_threshold
     with session_scope() as session:
         tenant = session.get(Tenant, tenant_uuid)
@@ -223,6 +236,29 @@ def dedup_and_finalize_run(tenant_id, run_id, *, fetch_stats: dict | None = None
                 continue
             _dedup_near(session, subject, priority, demoted, window_start, threshold, tenant_uuid)
 
+
+def score_run(tenant_id, run_id) -> None:
+    """Оценить выживших после дедупа (status='extracted'). Best-effort, каждая статья независимо."""
+    run_uuid = _uuid(run_id)
+    with session_scope() as session:
+        article_ids = [
+            str(article.id)
+            for article in ArticleRepository.run_articles(
+                session, run_uuid, statuses=("extracted",)
+            )
+        ]
+    for article_id in article_ids:
+        try:
+            score_article_run(article_id, run_id)
+        except Exception:
+            continue
+
+
+def finalize_run(tenant_id, run_id, *, fetch_stats: dict | None = None) -> dict:
+    """Счётчики прогона + финализация статуса леджера."""
+    run_uuid = _uuid(run_id)
+    fetch_stats = fetch_stats or {}
+    with session_scope() as session:
         counters = ArticleRepository.run_counters(session, run_uuid)
         if "fetched" in fetch_stats:
             counters["fetched"] = fetch_stats["fetched"]
@@ -332,7 +368,7 @@ def run_tenant_pipeline_sync(
         except Exception:
             continue
 
-    return dedup_and_finalize_run(
+    return dedup_and_score_run(
         tenant_id,
         run_id,
         fetch_stats={
@@ -383,7 +419,7 @@ def run_tenant_pipeline(tenant_id, run_id, mode="incremental", since=None):
         sources = SourceRepository.get_due_sources(session, _uuid(tenant_id), now=datetime.now(UTC))
         source_ids = [str(s.id) for s in sources]
     if not source_ids:
-        return dedup_and_finalize.delay(
+        return dedup_and_score.delay(
             [], tenant_id, run_id, {"fetched": 0, "skipped": 0, "failed_sources": 0}
         )
     from celery import chord, group
@@ -397,7 +433,7 @@ def ingest_source(self, source_id, run_id, mode="incremental", since=None):
     """Header-задача chord: НИКОГДА не завершается в FAILURE, иначе Celery не запустит body.
 
     Только transient-ошибки ретраятся с backoff; всё остальное возвращает failed-sentinel,
-    чтобы finalize_fetch/dedup_and_finalize всё равно отработали (partial-run инвариант).
+    чтобы finalize_fetch/dedup_and_score всё равно отработали (partial-run инвариант).
     """
     from app.worker.errors import TransientFetchError
 
@@ -437,17 +473,17 @@ def finalize_fetch(results, tenant_id, run_id):
         "warnings": warnings,
     }
     if not new_ids:
-        return dedup_and_finalize.delay([], tenant_id, run_id, fetch_stats)
+        return dedup_and_score.delay([], tenant_id, run_id, fetch_stats)
 
     from celery import chord, group
 
     header = group(extract_article.s(article_id, run_id) for article_id in new_ids)
-    return chord(header)(dedup_and_finalize.s(tenant_id, run_id, fetch_stats))
+    return chord(header)(dedup_and_score.s(tenant_id, run_id, fetch_stats))
 
 
 @celery_app.task(name="extract_article", bind=True, max_retries=3)
 def extract_article(self, article_id, run_id):
-    """Header-задача extract-chord: не падает в FAILURE, иначе dedup_and_finalize не выстрелит."""
+    """Header-задача extract-chord: не падает в FAILURE, иначе dedup_and_score не выстрелит."""
     from app.worker.errors import TransientFetchError
 
     try:
@@ -461,6 +497,53 @@ def extract_article(self, article_id, run_id):
         return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
 
 
-@celery_app.task(name="dedup_and_finalize")
-def dedup_and_finalize(results, tenant_id, run_id, fetch_stats=None):
-    return dedup_and_finalize_run(tenant_id, run_id, fetch_stats=fetch_stats or {})
+@celery_app.task(name="dedup_and_score")
+def dedup_and_score(results, tenant_id, run_id, fetch_stats=None):
+    """Терминал после extract-барьера: дедуп -> chord(скоринг выживших) -> финализация."""
+    dedup_articles(tenant_id, run_id)
+    run_uuid = _uuid(run_id)
+    with session_scope() as session:
+        article_ids = [
+            str(article.id)
+            for article in ArticleRepository.run_articles(
+                session, run_uuid, statuses=("extracted",)
+            )
+        ]
+    if not article_ids:
+        return finalize_run_task.delay([], tenant_id, run_id, fetch_stats)
+
+    from celery import chord, group
+
+    header = group(score_article.s(article_id, run_id) for article_id in article_ids)
+    return chord(header)(finalize_run_task.s(tenant_id, run_id, fetch_stats))
+
+
+@celery_app.task(name="score_article", bind=True, max_retries=3)
+def score_article(self, article_id, run_id):
+    """Header-задача score-chord: не падает в FAILURE, иначе finalize_run не выстрелит.
+
+    Transient-ошибки LLM (rate limit / timeout — free-tier бьёт per-minute квоту) ретраятся
+    с backoff; остальное возвращает failed-sentinel (partial-run инвариант).
+    """
+    import litellm
+
+    transient = (
+        litellm.RateLimitError,
+        litellm.Timeout,
+        litellm.APIConnectionError,
+        litellm.InternalServerError,
+    )
+    try:
+        return score_article_run(article_id, run_id)
+    except transient as exc:
+        try:
+            raise self.retry(exc=exc, countdown=min(600, 10 * (2**self.request.retries)))
+        except self.MaxRetriesExceededError:
+            return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
+    except Exception as exc:
+        return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
+
+
+@celery_app.task(name="finalize_run")
+def finalize_run_task(results, tenant_id, run_id, fetch_stats=None):
+    return finalize_run(tenant_id, run_id, fetch_stats=fetch_stats or {})

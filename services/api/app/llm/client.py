@@ -27,6 +27,7 @@ def structured_completion[T: BaseModel](
     tenant_id: str,
     stage: str,
     user_id: str | None = None,
+    pipeline_run_id: uuid.UUID | str | None = None,
     max_tokens: int = 2048,
     session_factory: SessionFactory = session_scope,
 ) -> T:
@@ -34,6 +35,7 @@ def structured_completion[T: BaseModel](
     import instructor
     import litellm
 
+    _configure_provider_keys()
     _configure_langfuse()
     trace_id = str(uuid.uuid4())
     client = instructor.from_litellm(litellm.completion)
@@ -52,6 +54,7 @@ def structured_completion[T: BaseModel](
         model=model,
         completion=completion,
         request_id=trace_id,
+        pipeline_run_id=pipeline_run_id,
         session_factory=session_factory,
     )
     return result
@@ -73,6 +76,21 @@ def _metadata(*, tenant_id: str, stage: str, user_id: str | None, trace_id: str)
     if user_id is not None:
         metadata["trace_user_id"] = user_id
     return metadata
+
+
+def _configure_provider_keys() -> None:
+    """Прокинуть ключи провайдеров из settings в os.environ для litellm (прямые вызовы).
+
+    pydantic-settings читает .env в объект settings, но НЕ экспортирует в окружение, а litellm
+    берёт ключи провайдеров из os.environ. setdefault уважает уже заданный извне ключ (live-тесты).
+    """
+    for env_name, value in (
+        ("OPENAI_API_KEY", settings.openai_api_key),
+        ("GEMINI_API_KEY", settings.gemini_api_key),
+        ("ANTHROPIC_API_KEY", settings.anthropic_api_key),
+    ):
+        if value and not os.environ.get(env_name):
+            os.environ[env_name] = value
 
 
 def _configure_langfuse() -> None:
@@ -98,6 +116,7 @@ def _record_usage(
     model: str,
     completion: object,
     request_id: str,
+    pipeline_run_id: uuid.UUID | str | None,
     session_factory: SessionFactory,
 ) -> None:
     """Записать стоимость вызова в ai_usage (зеркало Langfuse для апселла/отчётов)."""
@@ -121,4 +140,7 @@ def _record_usage(
             output_tokens=output_tokens,
             cost_usd=cost,
             request_id=request_id,
+            pipeline_run_id=(
+                uuid.UUID(str(pipeline_run_id)) if pipeline_run_id is not None else None
+            ),
         )
