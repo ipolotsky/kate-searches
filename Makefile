@@ -1,4 +1,4 @@
-.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate install
+.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate db-types install
 
 up:            ## поднять локальную инфру (Supabase CLI + Redis)
 	supabase start
@@ -43,3 +43,6 @@ db-migrate:    ## применить миграции к БД из DATABASE_URL 
 		echo "applying $$f"; \
 		psql "$$DATABASE_URL" -f $$f; \
 	done
+
+db-types:      ## регенерировать типы Supabase для web (после изменения схемы)
+	supabase gen types typescript --local --schema public > apps/web/src/lib/supabase/database.types.ts

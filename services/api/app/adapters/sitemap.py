@@ -228,14 +228,9 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def _download(url: str) -> bytes:
-    import httpx
+    from app.fetch.guard import safe_get
 
     headers = {"User-Agent": settings.user_agent}
-    response = httpx.get(
-        url,
-        headers=headers,
-        timeout=settings.fetch_timeout_seconds,
-        follow_redirects=True,
-    )
+    response = safe_get(url, headers=headers, timeout=settings.fetch_timeout_seconds)
     response.raise_for_status()
     return response.content

@@ -21,6 +21,7 @@ from app.adapters.base import (
 )
 from app.adapters.cursors import ETagCursor
 from app.adapters.registry import AdapterRegistry
+from app.fetch.guard import BlockedUrlError, assert_public_url
 from app.models import Document
 from app.pipeline.dedup import canonicalize_url, content_hash
 
@@ -51,6 +52,10 @@ class RssAdapter(BaseAdapter):
     def fetch(self, request: FetchRequest) -> FetchResult:
         cursor = ETagCursor.from_state(request.state)
         seen = set(cursor.seen_guids)
+        try:
+            assert_public_url(request.source["url"])
+        except BlockedUrlError:
+            return FetchResult(items=[], state=cursor.to_state(), warnings=["blocked_url"])
         parsed = feedparser.parse(request.source["url"], etag=cursor.etag)
 
         warnings: list[str] = []

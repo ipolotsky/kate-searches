@@ -3,9 +3,21 @@
     "name": "KateSearches"
   },
   "nav": {
+    "mainNav": "Main navigation",
     "dashboard": "Dashboard",
     "sources": "Sources",
     "settings": "Settings"
+  },
+  "common": {
+    "toasts": {
+      "statusUpdated": "Status updated",
+      "statusFailed": "Could not update status"
+    },
+    "error": {
+      "title": "Something went wrong",
+      "description": "We couldn't load this page. Please try again.",
+      "retry": "Try again"
+    }
   },
   "auth": {
     "login": {
@@ -31,22 +43,212 @@
   "dashboard": {
     "title": "Drafts",
     "subtitle": "Fresh, relevant stories — already drafted for you",
-    "signedInAs": "Signed in as {email}",
-    "empty": "No new drafts yet. They'll appear here after the daily run.",
-    "sections": {
+    "empty": "No drafts yet. They appear here after the daily run and generation.",
+    "statuses": {
       "new": "New",
-      "inProgress": "In progress",
-      "archive": "Archive"
+      "in_progress": "In progress",
+      "published": "Published",
+      "rejected": "Rejected",
+      "archived": "Archived"
+    },
+    "candidates": {
+      "title": "Scored stories",
+      "subtitle": "Pick the ones worth drafting",
+      "generate": "Generate drafts ({count})",
+      "queued": "Generation queued. Drafts appear after the run.",
+      "nothing": "Those stories are no longer eligible for drafting.",
+      "failed": "Could not start generation",
+      "selectAll": "Select all"
+    },
+    "runPipeline": {
+      "action": "Run pipeline",
+      "queued": "Pipeline run queued",
+      "alreadyRan": "Today's run has already been triggered.",
+      "failed": "Could not start the run"
     }
   },
   "post": {
     "score": "Relevance",
     "source": "Source",
+    "untitled": "Untitled draft",
     "actions": {
       "edit": "Edit",
       "publish": "Publish",
       "reject": "Reject",
-      "archive": "Archive"
+      "archive": "Archive",
+      "take": "Take",
+      "return": "Return to new"
+    },
+    "confirmReject": {
+      "title": "Reject this draft?",
+      "message": "It will be moved to rejected. You can restore it later.",
+      "confirm": "Reject",
+      "cancel": "Cancel"
+    }
+  },
+  "editor": {
+    "back": "Back to drafts",
+    "titleLabel": "Title",
+    "status": "Status",
+    "loadingEditor": "Loading editor",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "unsaved": "Unsaved changes",
+    "saveError": "Save failed",
+    "statusUpdated": "Status updated",
+    "statusFailed": "Could not update status",
+    "noSource": "No linked source story.",
+    "tabs": {
+      "aria": "Draft sections",
+      "body": "Body",
+      "seo": "SEO",
+      "source": "Source & relevance"
+    },
+    "faq": {
+      "title": "FAQ",
+      "empty": "No FAQ entries yet.",
+      "question": "Question {number}",
+      "answer": "Answer",
+      "add": "Add question",
+      "remove": "Remove question {number}"
+    },
+    "seo": {
+      "hint": "AI-suggested SEO/AEO guidance for this draft.",
+      "metaDescription": "Meta description",
+      "brandTieIn": "Brand tie-in",
+      "keywords": "Keywords",
+      "entities": "Entities",
+      "instructions": "SEO instructions",
+      "suggestedTitles": "Suggested titles"
+    },
+    "jsonLd": {
+      "title": "JSON-LD (schema.org)",
+      "valid": "Valid",
+      "invalid": "Invalid JSON",
+      "hint": "Structured data embedded on export for AEO."
+    }
+  },
+  "export": {
+    "action": "Export",
+    "markdown": "Download Markdown",
+    "html": "Download HTML",
+    "copy": "Copy as text",
+    "copied": "Copied to clipboard",
+    "copyFailed": "Copy failed"
+  },
+  "feedback": {
+    "up": "Good",
+    "down": "Needs work",
+    "submit": "Send feedback",
+    "commentPlaceholder": "Optional comment…",
+    "thanks": "Thanks for the feedback!",
+    "failed": "Could not send feedback",
+    "draft": {
+      "title": "Rate this draft",
+      "hint": "Your rating and edits train the brand voice.",
+      "includesEdits": "Your edits will be included."
+    },
+    "score": {
+      "title": "Was this scoring right?",
+      "hint": "Tell us whether this story was relevant."
+    }
+  },
+  "relevance": {
+    "overall": "Score",
+    "passes": "Passes threshold",
+    "filtered": "Filtered out",
+    "trend": "Trend",
+    "levels": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    }
+  },
+  "source": {
+    "open": "Open original",
+    "summary": "Summary",
+    "body": "Full text",
+    "noBody": "No extracted text.",
+    "back": "Back to drafts"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Brand profile and news sources",
+    "brand": {
+      "title": "Brand profile",
+      "company": "Company description",
+      "audience": "Audience description",
+      "filter": "Relevance criteria",
+      "filterHint": "Free text: what to keep, what to drop.",
+      "tone": "Voice & tone",
+      "threshold": "Score threshold",
+      "thresholdHint": "Stories below this score are filtered out (0-100).",
+      "locales": "Content languages",
+      "save": "Save profile",
+      "saved": "Profile saved",
+      "failed": "Could not save profile"
+    },
+    "voiceExamples": {
+      "title": "Voice examples",
+      "hint": "Few-shot examples of the brand voice with their source news.",
+      "item": "Example {number}",
+      "postText": "Post text",
+      "sourceUrl": "Source URL",
+      "why": "Why it works",
+      "add": "Add example",
+      "remove": "Remove example {number}"
+    }
+  },
+  "sources": {
+    "title": "Sources",
+    "subtitle": "RSS, sitemaps and scrapers monitored daily",
+    "add": "Add source",
+    "addNew": "New source",
+    "edit": "Edit",
+    "empty": "No sources yet. Add one to start monitoring.",
+    "deleted": "Source deleted",
+    "deleteFailed": "Could not delete source",
+    "on": "On",
+    "off": "Off",
+    "delete": "Delete",
+    "lastRun": "Last run: {date}",
+    "type": "Type",
+    "priority": "Priority",
+    "url": "URL",
+    "titleField": "Title",
+    "category": "Category",
+    "enabled": "Enabled",
+    "test": "Test",
+    "save": "Save source",
+    "cancel": "Cancel",
+    "saved": "Source saved",
+    "saveFailed": "Could not save source",
+    "urlRequired": "URL is required",
+    "confirmDelete": {
+      "title": "Delete this source?",
+      "message": "It stops being monitored. Existing articles stay.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
+    },
+    "testErrors": {
+      "timeout": "Test timed out",
+      "networkError": "Could not reach the service",
+      "apiError": "The service returned an error"
+    }
+  },
+  "sourceTest": {
+    "sample": "Sample ({count})",
+    "noSample": "No items returned.",
+    "novel": "New",
+    "seen": "Seen",
+    "hasBody": "Has text",
+    "noBodyFlag": "No text",
+    "errors": {
+      "unsupported_type": "Unsupported source type",
+      "invalid_config": "Invalid configuration",
+      "fetch_timeout": "Fetch timed out",
+      "fetch_error": "Fetch failed",
+      "empty_feed": "The feed is empty"
     }
   }
 }

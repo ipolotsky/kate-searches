@@ -20,6 +20,13 @@ class Crawl4aiFetcher:
         except ImportError:
             return FetchedPage(final_url=url, fetcher=self.name, error="crawl4ai_not_installed")
 
+        from app.fetch.guard import BlockedUrlError, assert_public_url
+
+        try:
+            assert_public_url(url)
+        except BlockedUrlError:
+            return FetchedPage(final_url=url, fetcher=self.name, error="blocked_url")
+
         async def _run() -> FetchedPage:
             async with AsyncWebCrawler(verbose=False) as crawler:
                 result = await crawler.arun(

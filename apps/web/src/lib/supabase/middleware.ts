@@ -1,13 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import type { NextRequest, NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
+import type { Database } from "./database.types";
 
 // Обновляет сессию Supabase и переносит cookie на ответ next-intl. Возвращает юзера.
 export const updateSession = async (
   request: NextRequest,
   response: NextResponse,
 ): Promise<User | null> => {
-  const supabase = createServerClient(
+  const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
     {

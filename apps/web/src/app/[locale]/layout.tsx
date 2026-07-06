@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { ThemeModeScript } from "flowbite-react";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
+import { ThemeInit } from "@/components/layout/ThemeInit";
 import { routing } from "@/i18n/routing";
 import "../globals.css";
 
@@ -29,8 +31,12 @@ export default async function LocaleLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
+      <head>
+        <ThemeModeScript />
+      </head>
       <body className="bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100">
+        <ThemeInit />
         <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
       </body>
     </html>

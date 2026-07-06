@@ -9,6 +9,7 @@ __pycache__/
 
 # build
 .next/
+.flowbite-react/
 dist/
 build/
 *.tsbuildinfo

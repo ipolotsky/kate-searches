@@ -63,6 +63,7 @@ def test_rss_fetch_dedups_seen_and_respects_limit(monkeypatch) -> None:
         "app.adapters.rss.feedparser.parse",
         lambda url, etag=None: _FakeParsed(entries, etag="etag-1"),
     )
+    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
     adapter = RssAdapter()
     result = adapter.fetch(FetchRequest(source=_SOURCE, state={"seen_guids": ["g0", "g1"]}))
     returned = {item["id"] for item in result.items}
@@ -76,6 +77,7 @@ def test_rss_fetch_dedups_seen_and_respects_limit(monkeypatch) -> None:
 
 def test_rss_fetch_empty_feed_warns(monkeypatch) -> None:
     monkeypatch.setattr("app.adapters.rss.feedparser.parse", lambda url, etag=None: _FakeParsed([]))
+    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
     result = RssAdapter().fetch(FetchRequest(source=_SOURCE, state={}))
     assert "empty_feed" in result.warnings
     assert result.items == []

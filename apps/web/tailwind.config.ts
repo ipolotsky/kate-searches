@@ -1,16 +1,13 @@
 import type { Config } from "tailwindcss";
-import flowbite from "flowbite/plugin";
+import flowbiteReact from "flowbite-react/plugin/tailwindcss";
 
 const config: Config = {
-  content: [
-    "./src/**/*.{js,ts,jsx,tsx,mdx}",
-    "./node_modules/flowbite-react/**/*.{js,ts,jsx,tsx}",
-    "./node_modules/flowbite/**/*.js",
-  ],
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}", ".flowbite-react/class-list.json"],
+  darkMode: "class",
   theme: {
     extend: {},
   },
-  plugins: [flowbite],
+  plugins: [flowbiteReact],
 };
 
 export default config;

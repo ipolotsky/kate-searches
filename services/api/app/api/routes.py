@@ -145,8 +145,10 @@ async def test_source(req: TestSourceRequest) -> dict:
         )
     except TimeoutError:
         return {"ok": False, "error": "fetch_timeout"}
-    except Exception as exc:
-        return {"ok": False, "error": "fetch_error", "detail": str(exc)}
+    except Exception:
+        # Не эхоим сырой текст исключения: он может раскрыть внутренний хост/порт/статус
+        # при SSRF-пробе. Наружу — только opaque-код.
+        return {"ok": False, "error": "fetch_error"}
 
     timezone = _tenant_timezone(req.tenant_id)
     sample = []
@@ -181,6 +183,15 @@ async def test_source(req: TestSourceRequest) -> dict:
         "sample": sample,
         "error": error,
     }
+
+
+@router.get("/internal/adapters")
+def list_adapters() -> dict:
+    """Описание адаптеров источников: config_schema (секреты вырезаны) + capabilities.
+
+    UI рисует форму источника из JSON-схемы. Метод describe() уже вырезает секрет-поля.
+    """
+    return {"adapters": REGISTRY.describe()}
 
 
 def _tenant_timezone(tenant_id: str | None) -> str:

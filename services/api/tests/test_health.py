@@ -31,6 +31,7 @@ def test_source_test_endpoint_dry_run_rss(monkeypatch):
     monkeypatch.setattr(
         "app.adapters.rss.feedparser.parse", lambda url, etag=None: _FakeParsed(entries)
     )
+    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
     r = client.post("/internal/sources/test", json={"type": "rss", "url": "https://news.test/feed"})
     body = r.json()
     assert r.status_code == 200
@@ -48,3 +49,16 @@ def test_source_test_endpoint_unknown_type():
     assert body["ok"] is False
     assert body["supported"] is False
     assert body["error"] == "unsupported_type"
+
+
+def test_adapters_endpoint_describes_registered_adapters():
+    r = client.get("/internal/adapters")
+    assert r.status_code == 200
+    adapters = r.json()["adapters"]
+    by_type = {a["type"]: a for a in adapters}
+    assert {"rss", "sitemap", "scraper"} <= set(by_type)
+    for adapter in adapters:
+        assert "capabilities" in adapter
+        assert adapter["config_schema"]["type"] == "object"
+    # config_schema drives the UI source form; rss exposes novelty_days
+    assert "novelty_days" in by_type["rss"]["config_schema"]["properties"]

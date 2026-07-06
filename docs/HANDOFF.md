@@ -1,8 +1,8 @@
 # HANDOFF
 
-Актуальный снимок состояния после M0-M3: что готово, что нужно от владельца, как запускать и что делать дальше. Статусы этапов — в разделах «Статус M1/M2/M3» ниже.
+Актуальный снимок состояния после M0-M4: что готово, что нужно от владельца, как запускать и что делать дальше. Статусы этапов — в разделах «Статус M1/M2/M3/M4» ниже.
 
-Состояние git: M0-M3 закоммичены (M1 - `e3b080a`, M2 - `a723cb4`, M3 - `97dcd58`). Рабочее дерево чистое. Плейбуки коммитов ниже - исторический след, повторно не выполнять.
+Состояние git: M0-M3 закоммичены (M1 - `e3b080a`, M2 - `a723cb4`, M3 - `97dcd58`). **M4 реализован в рабочем дереве, НЕ закоммичен** (коммит — по явному запросу владельца). Плейбуки коммитов ниже - исторический след, повторно не выполнять.
 
 ## Статус M0 (каркас)
 
@@ -264,7 +264,43 @@ curl -XPOST localhost:8000/internal/pipeline/generate -d '{"tenant_id":"<uuid>"}
 - **Отдельный `pipeline_run` для генерации** (ledger-строка «generation run») - если понадобится наблюдаемость активности генерации сверх `posts`+`ai_usage`. Сейчас стоимость атрибутируется прогону, что заскорил статью.
 - **Семантика `pipeline_runs.scored`**: после `scored -> drafted` счётчик `scored` прогона остаётся резидуальным (консистентно с уже резидуальным `extracted` после скоринга); `drafted` наполняется через `refresh_drafted`.
 
-См. также `docs/04_mvp_spec.md` §7 и матрицу расширяемости `docs/07_m1_ingestion_plan.md` §10. Дальше - M4 (UI: дашборд черновиков, редактор, онбординг).
+См. также `docs/04_mvp_spec.md` §7 и матрицу расширяемости `docs/07_m1_ingestion_plan.md` §10.
+
+## Статус M4 (UI: дашборд, редактор, настройки, фидбэк) — готово
+
+Веха M4 реализована целиком по плану `.claude/plans/docs-handoff-md-compiled-candy.md`. Маркетолог теперь работает поверх готового пайплайна как редактор (approve / edit / kill).
+
+Архитектурный принцип соблюдён: web ходит НАПРЯМУЮ в Supabase под `authenticated` для всего тенант-скоупленного (RLS изолирует), три «тяжёлых» действия (`pipeline/run`, `pipeline/generate`, `sources/test`) идут через Next.js BFF (server actions) к FastAPI, `tenant_id` резолвится на сервере из `users` (`getUserAndTenant`), никогда из клиента.
+
+Что сделано:
+- **Каркас**: `flowbite-react` поднят до 0.12 (React-19-совместимость, plugin-setup для Tailwind v3 + `withFlowbiteReact`, `ThemeModeScript`/`ThemeInit`), route group `(app)` с shell (navbar/sidebar/локаль-свитчер), `getUserAndTenant`, BFF `lib/api/internal.ts` (`AbortController`-таймауты, коды мапятся в i18n), типы Supabase (`database.types.ts`, make-таргет `db-types`), Vitest jsdom+RTL.
+- **Дашборд**: RSC-чтение posts+articles+scored-кандидатов, `PostCard` (бейджи приоритета/скора, действия), `StatusSection`, `DraftsBoard` (props-driven c картой optimistic-override — без клоббера соседних карточек), `ScoredCandidates` (генерация по выбору), `RunPipelineButton`.
+- **Редактор**: `PostEditor` (автосейв debounce+blur+перед сменой статуса, flush-гард — статус не двигается поверх несохранённого контента), `MarkdownField` (`@uiw/react-md-editor`, ssr:false, тема через класс `dark`), `SeoPanel`, `FaqEditor`, `JsonLdPreview` (валидность+a11y), `StatusBar` (машина состояний), `ExportMenu` (Markdown/HTML/copy; HTML санитайзится rehype-sanitize, json-ld безопасно сериализуется, `<html lang>` из языка поста).
+- **Relevance/фидбэк**: `RelevancePanel` (критерии итерируются динамически, без хардкода имён), `SourceOriginal`, `ScoreFeedback`/`DraftFeedback` (edited_diff через jsdiff), роут `articles/[id]`.
+- **Настройки**: `BrandProfileForm`+`VoiceExamplesEditor` (RLS upsert по `tenant_id`), `SourcesSection`/`SourceForm` (динамическая форма из `config_schema` адаптера)/`SourceTestResult`, новый `GET /internal/adapters` (`REGISTRY.describe()`, секреты вырезаны) + fallback-константы.
+- **i18n/тема/тесты**: полные `messages/{en,ru}.json` (паритет держит тест), тёмная тема, error-boundary `(app)/error.tsx` (DB-ошибка не маскируется под «пусто»), 36 web-тестов (чистые билдеры export/diff/status/types/adapters + компонентные DraftsBoard/ScoredCandidates/SourceTestResult).
+
+### Независимый ревью M4 и починенные баги
+
+Прогнан оркестрованный adversarial-review: 6 ортогональных линз (data-contract, react/next/flowbite, i18n, ux/a11y, bff-контракт, конкурентность) × верификация каждой находки — **21 подтверждённый дефект, все починены**. Ключевые (medium): dead-click в `ScoreFeedback` (comment-only не отправлялся), `generateDrafts`/`runPipeline` рапортовали успех при `queued:false` (HTTP 200), клоббер соседних карточек в `DraftsBoard` при откате, смена статуса поверх несохранённого контента в редакторе, отсутствующие accessible-name у icon-кнопок. Остальное (low): `<html lang>` в экспорте, гидратация дат (timeZone UTC), a11y (aria-labels, live-регионы, aria-pressed), маскировка DB-ошибок. Плюс баг из живого E2E: тема md-редактора не совпадала с приложением.
+
+Отдельный security-review (изоляция тенантов / auth-IDOR / XSS-BFF): из находок подтверждена **1** — SSRF в fetch-слое (spoofing `tenant_id`, IDOR, XSS, auth-гарды — опровергнуты, посадка чистая).
+
+- **SSRF (medium, было латентно с M1, M4 сделал достижимым из UI)**: `/internal/sources/test` и дневной ingestion фетчили произвольный URL пользователя без egress-фильтрации и эхоили `body_preview`/текст исключения — тенант мог пробить внутреннюю сеть (`169.254.169.254` и т.п.). Починено на уровне fetch-слоя (`app/fetch/guard.py::assert_public_url`/`safe_get`): блок не-http(s) схем и хостов, резолвящихся в loopback/link-local/private/reserved, валидация каждого редирект-хопа (авто-редиректы выключены), подключено в `HttpxFetcher`/`sitemap._download`/`crawl4ai`/`rss`; тест-эндпоинт больше не эхоит сырой текст исключения (opaque-код). Живьём проверено: внутренние цели блокируются без утечки, публичные источники работают. Хвост: IP-pinning против DNS-rebinding (узкий TOCTOU) — follow-up.
+
+### Проверка M4
+
+```bash
+cd apps/web && pnpm typecheck && pnpm test && pnpm build   # tsc + 36 vitest + Next build
+make lint                                                  # web eslint + api ruff (в CI venv активен)
+cd services/api && . .venv/bin/activate && pytest -q -m "not integration and not live"   # 106 passed
+```
+
+E2E прогнан в браузере (Chrome DevTools MCP) на реальной инфре: регистрация → провижининг тенанта → настройки (бренд-профиль RLS-upsert, добавление RSS-источника + dry-run Test через BFF→FastAPI→адаптер, RLS-insert) → Run pipeline (BFF) → дашборд с данными (PostCard/ScoredCandidates) → редактор (табы, md-превью, FAQ, JSON-LD, RelevancePanel с динамическими критериями) → смена статуса new↔in_progress (RLS UPDATE + автосейв) → фидбэк (score comment-only, rating=null в БД) → RU-локаль. Консоль без ошибок; каждая починка перепроверена с подтверждением в БД.
+
+Хвосты M4 (follow-ups, не блокеры): SSRF IP-pinning против DNS-rebinding; Realtime-обновление дашборда вместо ручного refresh; owner-only гейтинг действий; визард-онбординг вместо одностраничных настроек.
+
+Дальше - M5 (usage/бюджет/апселл, метеринг-репорты) и роадмап (автопубликация в CMS, соцсети, Stripe).
 
 ## Ждём от Kate
 

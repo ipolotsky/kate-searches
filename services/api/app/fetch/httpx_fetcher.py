@@ -14,14 +14,17 @@ class HttpxFetcher:
     ) -> FetchedPage:
         import httpx
 
+        from app.fetch.guard import BlockedUrlError, safe_get
+
         headers = {"User-Agent": settings.user_agent}
         try:
-            response = httpx.get(
+            response = safe_get(
                 url,
                 headers=headers,
                 timeout=timeout or settings.fetch_timeout_seconds,
-                follow_redirects=True,
             )
+        except BlockedUrlError:
+            return FetchedPage(final_url=url, fetcher=self.name, error="blocked_url")
         except httpx.HTTPError as exc:
             return FetchedPage(final_url=url, fetcher=self.name, error=str(exc))
         return FetchedPage(
