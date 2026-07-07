@@ -60,3 +60,61 @@ export const updateTenantPlan = async (
   revalidatePath(`/${locale}/admin/${input.tenantId}`);
   return { ok: true };
 };
+
+// Выдать платформенного админа по email (пользователь уже должен быть зарегистрирован).
+export const grantPlatformAdmin = async (
+  email: string,
+  locale: string,
+): Promise<AdminActionResult> => {
+  const { userId } = await getUserAndTenant(locale);
+  if (!(await isPlatformAdmin(userId))) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  const normalized = email.trim();
+  if (normalized.length === 0) {
+    return { ok: false, code: "invalidEmail" };
+  }
+
+  const admin = createAdminClient();
+  const user = await admin.from("users").select("id").eq("email", normalized).maybeSingle();
+  if (user.error != null) {
+    return { ok: false, code: "failed" };
+  }
+  if (user.data == null) {
+    return { ok: false, code: "userNotFound" };
+  }
+
+  const result = await admin
+    .from("platform_admins")
+    .upsert({ user_id: user.data.id }, { onConflict: "user_id", ignoreDuplicates: true });
+  if (result.error != null) {
+    return { ok: false, code: "failed" };
+  }
+
+  revalidatePath(`/${locale}/admin/admins`);
+  return { ok: true };
+};
+
+// Отозвать платформенного админа. Себя отозвать нельзя — защита от самоблокировки.
+export const revokePlatformAdmin = async (
+  targetUserId: string,
+  locale: string,
+): Promise<AdminActionResult> => {
+  const { userId } = await getUserAndTenant(locale);
+  if (!(await isPlatformAdmin(userId))) {
+    return { ok: false, code: "forbidden" };
+  }
+  if (targetUserId === userId) {
+    return { ok: false, code: "cannotRemoveSelf" };
+  }
+
+  const admin = createAdminClient();
+  const result = await admin.from("platform_admins").delete().eq("user_id", targetUserId);
+  if (result.error != null) {
+    return { ok: false, code: "failed" };
+  }
+
+  revalidatePath(`/${locale}/admin/admins`);
+  return { ok: true };
+};

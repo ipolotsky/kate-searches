@@ -1,4 +1,5 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import Link from "next/link";
 import { AdminTenantsTable, type TenantReportRow } from "@/components/admin/AdminTenantsTable";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { monthStartIso } from "@/lib/usage";
@@ -23,9 +24,17 @@ export default async function AdminPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("title")}</h1>
-        <p className="text-sm text-gray-500">{t("subtitle")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("title")}</h1>
+          <p className="text-sm text-gray-500">{t("subtitle")}</p>
+        </div>
+        <Link
+          href={`/${locale}/admin/admins`}
+          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+          {t("manageAdmins")}
+        </Link>
       </div>
       <AdminTenantsTable rows={rows} locale={locale} />
     </div>

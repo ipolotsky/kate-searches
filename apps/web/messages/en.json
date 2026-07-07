@@ -333,6 +333,29 @@
       "draft": "Drafting",
       "extract": "Extraction",
       "other": "Other"
+    },
+    "manageAdmins": "Manage admins",
+    "admins": {
+      "title": "Platform admins",
+      "subtitle": "Grant or revoke cross-tenant admin access",
+      "back": "Back to tenants",
+      "email": "Email",
+      "added": "Added",
+      "grant": "Grant admin",
+      "grantPlaceholder": "user@example.com",
+      "remove": "Remove",
+      "actions": "Actions",
+      "you": "you (current)",
+      "empty": "No platform admins yet.",
+      "granted": "Admin granted",
+      "revoked": "Admin revoked",
+      "errors": {
+        "userNotFound": "No registered user with that email",
+        "invalidEmail": "Enter a valid email",
+        "cannotRemoveSelf": "You can't remove your own admin access",
+        "forbidden": "Not allowed",
+        "failed": "Could not complete the action"
+      }
     }
   }
 }
