@@ -21,12 +21,11 @@ interface RequestOptions {
   timeoutMs?: number;
 }
 
-const request = async <T>(
+const attempt = async <T>(
   path: string,
   init: RequestInit,
-  options: RequestOptions,
+  timeoutMs: number,
 ): Promise<InternalResult<T>> => {
-  const timeoutMs = options.timeoutMs ?? 5000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -48,6 +47,22 @@ const request = async <T>(
   } finally {
     clearTimeout(timer);
   }
+};
+
+const request = async <T>(
+  path: string,
+  init: RequestInit,
+  options: RequestOptions,
+): Promise<InternalResult<T>> => {
+  const timeoutMs = options.timeoutMs ?? 5000;
+  const first = await attempt<T>(path, init, timeoutMs);
+  // Один ретрай только на networkError: переживаем cutover api при docker rollout
+  // (connection refused/reset — запрос почти всегда не дошёл до сервера, повтор безопасен).
+  if (first.ok || first.code !== "networkError") {
+    return first;
+  }
+  await new Promise<void>((x) => setTimeout(x, 300));
+  return attempt<T>(path, init, timeoutMs);
 };
 
 export const postInternal = async <T = unknown>(

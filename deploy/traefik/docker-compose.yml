@@ -1,0 +1,33 @@
+# Общий reverse-proxy на всю VM: один Traefik держит TLS и разводит окружения по хостнеймам.
+# Разворачивается один раз: docker network create proxy && docker compose up -d.
+# acme.json заранее создать пустым и выставить chmod 600 (иначе Traefik откажется его читать).
+name: traefik
+
+networks:
+  proxy:
+    external: true
+
+services:
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=proxy
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --certificatesresolvers.le.acme.email=ipolo.box@gmail.com
+      - --certificatesresolvers.le.acme.storage=/acme.json
+      # На время отладки роутинга раскомментировать staging-CA (не жрёт лимиты Let's Encrypt):
+      # - --certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/acme.json
+    networks: [proxy]

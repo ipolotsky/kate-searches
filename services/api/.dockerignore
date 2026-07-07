@@ -1,0 +1,15 @@
+.git
+.venv
+
+# secrets — never into the image (root .env holds live keys)
+.env
+.env.*
+!.env.example
+
+**/__pycache__
+*.egg-info
+.pytest_cache
+.ruff_cache
+.crawl4ai
+tests
+*.md

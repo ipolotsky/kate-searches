@@ -1,0 +1,30 @@
+# Applies to the web image build (context = repo root). The api image uses services/api/.dockerignore.
+.git
+.github
+**/node_modules
+**/.next
+**/.turbo
+**/.flowbite-react
+**/.venv
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+**/.DS_Store
+
+# secrets — never into the image
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# not needed for the web build
+services
+supabase
+docs
+infra
+Makefile
+docker-compose.yml
+deploy
+*.md

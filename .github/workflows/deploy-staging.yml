@@ -1,0 +1,139 @@
+name: Deploy Staging
+
+# PR открыт/обновлён -> прогон CI -> сборка образов -> миграции -> rollout на общий staging -> коммент в PR.
+# Черновые PR (draft) деплой не запускают, но CI на них прогоняется.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: deploy-staging-pr-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+env:
+  IMAGE_WEB: ghcr.io/ipolotsky/kate-searches/web
+  IMAGE_API: ghcr.io/ipolotsky/kate-searches/api
+  TAG: staging-${{ github.sha }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: ci
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build & push web (staging NEXT_PUBLIC_* baked in)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_WEB }}:${{ env.TAG }}
+            ${{ env.IMAGE_WEB }}:staging
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.STAGING_NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.STAGING_NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: build & push api
+        uses: docker/build-push-action@v6
+        with:
+          context: services/api
+          push: true
+          tags: |
+            ${{ env.IMAGE_API }}:${{ env.TAG }}
+            ${{ env.IMAGE_API }}:staging
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+  migrate:
+    needs: build
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: apply Supabase migrations (idempotent)
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: make db-migrate
+
+  deploy:
+    needs: migrate
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: sync compose + deploy script to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "deploy/compose.yml,deploy/deploy.sh"
+          target: "/srv/kate-searches"
+          strip_components: 1
+      - name: rollout on VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            chmod +x /srv/kate-searches/deploy.sh
+            /srv/kate-searches/deploy.sh staging ${{ env.TAG }} ${{ env.TAG }}
+
+  comment:
+    needs: deploy
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        with:
+          script: |
+            const marker = "<!-- staging-deploy -->";
+            const url = process.env.STAGING_URL || "https://staging.taskyou.me";
+            const sha = context.sha.slice(0, 7);
+            const body = [
+              marker,
+              "### Staging развёрнут",
+              `URL: ${url}`,
+              `Коммит: \`${sha}\``,
+              "",
+              "Чек-лист (уточни по описанию PR):",
+              "- [ ] логин и сессия",
+              "- [ ] основной сценарий фичи",
+              "- [ ] i18n en/ru",
+              "- [ ] нет регрессий в дашборде",
+            ].join("\n");
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((x) => x.body && x.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
