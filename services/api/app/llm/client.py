@@ -8,13 +8,16 @@ import os
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from decimal import Decimal
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.engine import session_scope
-from app.db.repositories import insert_ai_usage
+from app.db.models import Tenant
+from app.db.repositories import insert_ai_usage, reserve_budget, settle_budget
+from app.metering import BudgetExceededError, estimate_for, period_key_utc
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 
@@ -67,16 +70,30 @@ def structured_completion_with_usage[T: BaseModel](
 
     _configure_provider_keys()
     _configure_langfuse()
+
+    # Строгий hard-cap: атомарно резервируем оценку под бюджет ДО вызова. Если исчерпан — блок.
+    reservation = _reserve_budget(tenant_id=tenant_id, stage=stage, session_factory=session_factory)
+
     trace_id = str(uuid.uuid4())
     client = instructor.from_litellm(litellm.completion)
-    result, completion = client.chat.completions.create_with_completion(
-        model=model,
-        messages=messages,
-        response_model=response_model,
-        max_tokens=max_tokens,
-        metadata=_metadata(tenant_id=tenant_id, stage=stage, user_id=user_id, trace_id=trace_id),
-        **_proxy_params(),
-    )
+    try:
+        result, completion = client.chat.completions.create_with_completion(
+            model=model,
+            messages=messages,
+            response_model=response_model,
+            max_tokens=max_tokens,
+            metadata=_metadata(
+                tenant_id=tenant_id, stage=stage, user_id=user_id, trace_id=trace_id
+            ),
+            **_proxy_params(),
+        )
+    except Exception:
+        # Вызов не состоялся — денег не потратили: рефанд резерва.
+        _refund_reservation(
+            tenant_id=tenant_id, reservation=reservation, session_factory=session_factory
+        )
+        raise
+
     cost = _record_usage(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -87,6 +104,10 @@ def structured_completion_with_usage[T: BaseModel](
         pipeline_run_id=pipeline_run_id,
         session_factory=session_factory,
     )
+    # Сверяем резерв на факт (резерв оставляем, если запись usage упала — консервативно).
+    _settle_reservation(
+        tenant_id=tenant_id, reservation=reservation, cost=cost, session_factory=session_factory
+    )
     return result, cost
 
 
@@ -94,6 +115,56 @@ def _proxy_params() -> dict:
     if not settings.litellm_base_url:
         return {}
     return {"api_base": settings.litellm_base_url, "api_key": settings.litellm_master_key}
+
+
+def _reserve_budget(
+    *, tenant_id: str, stage: str, session_factory: SessionFactory
+) -> tuple[str, Decimal] | None:
+    """Зарезервировать оценку стоимости стадии под месячный бюджет тенанта (строгий hard-cap).
+
+    None — бюджета нет (не гейтим). Raise BudgetExceededError — бюджет исчерпан. Резерв коммитится
+    своей транзакцией, чтобы конкурентные вызовы видели его атомарно (нет TOCTOU-гонки).
+    """
+    with session_factory() as session:
+        tenant = session.get(Tenant, uuid.UUID(str(tenant_id)))
+        if tenant is None or tenant.ai_budget_usd_month is None:
+            return None
+        budget = tenant.ai_budget_usd_month
+        period = period_key_utc()
+        estimate = estimate_for(stage)
+        if budget <= 0 or not reserve_budget(
+            session, tenant.id, period=period, estimate=estimate, budget=budget
+        ):
+            raise BudgetExceededError(f"monthly AI budget exhausted for tenant {tenant_id}")
+    return period, estimate
+
+
+def _refund_reservation(
+    *, tenant_id: str, reservation: tuple[str, Decimal] | None, session_factory: SessionFactory
+) -> None:
+    """Вернуть резерв (вызов не состоялся — денег не потратили)."""
+    if reservation is None:
+        return
+    period, estimate = reservation
+    with session_factory() as session:
+        settle_budget(session, uuid.UUID(str(tenant_id)), period=period, delta=-estimate)
+
+
+def _settle_reservation(
+    *,
+    tenant_id: str,
+    reservation: tuple[str, Decimal] | None,
+    cost: float,
+    session_factory: SessionFactory,
+) -> None:
+    """Свести резерв к фактической стоимости (delta = факт - оценка)."""
+    if reservation is None:
+        return
+    period, estimate = reservation
+    with session_factory() as session:
+        settle_budget(
+            session, uuid.UUID(str(tenant_id)), period=period, delta=Decimal(str(cost)) - estimate
+        )
 
 
 def _metadata(*, tenant_id: str, stage: str, user_id: str | None, trace_id: str) -> dict:

@@ -2,6 +2,7 @@
 
 import uuid
 from contextlib import contextmanager
+from decimal import Decimal
 from types import SimpleNamespace
 
 import instructor
@@ -9,6 +10,7 @@ import litellm
 import pytest
 
 from app.llm import client as llm_client
+from app.metering import BudgetExceededError
 from app.models.scoring import CriterionScore, RelevanceScore
 
 
@@ -42,6 +44,10 @@ class _FakeSession:
 
     def flush(self) -> None:
         pass
+
+    # budget=None => hard-cap не гейтит (reserve пропускается), эти тесты про запись ai_usage.
+    def get(self, _model: object, primary_key: object) -> object:
+        return SimpleNamespace(id=primary_key, ai_budget_usd_month=None)
 
 
 def test_configure_provider_keys_bridges_settings_to_environ(
@@ -140,3 +146,40 @@ def test_structured_completion_attributes_pipeline_run_id(monkeypatch: pytest.Mo
     )
 
     assert added[0].pipeline_run_id == run_id
+
+
+def test_structured_completion_blocks_when_budget_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @contextmanager
+    def fake_factory():
+        yield SimpleNamespace(
+            get=lambda _m, pk: SimpleNamespace(id=pk, ai_budget_usd_month=Decimal("10"))
+        )
+
+    called = {"llm": False}
+
+    class _FakeCompletions:
+        def create_with_completion(self, **_: object):
+            called["llm"] = True
+            return _relevance(), SimpleNamespace(usage=SimpleNamespace())
+
+    monkeypatch.setattr(
+        instructor,
+        "from_litellm",
+        lambda _fn: SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions())),
+    )
+    # Бюджет исчерпан: reserve отказывает.
+    monkeypatch.setattr(llm_client, "reserve_budget", lambda *a, **k: False)
+
+    with pytest.raises(BudgetExceededError):
+        llm_client.structured_completion(
+            model="gemini/gemini-2.0-flash-lite",
+            messages=[{"role": "user", "content": "x"}],
+            response_model=RelevanceScore,
+            tenant_id=str(uuid.uuid4()),
+            stage="score",
+            session_factory=fake_factory,
+        )
+
+    assert called["llm"] is False  # заблокировано ДО обращения к модели

@@ -23,6 +23,7 @@ from app.db.repositories import (
     PipelineRunRepository,
     SourceRepository,
 )
+from app.metering import BudgetExceededError
 from app.pipeline.dedup import (
     hamming,
     is_better_canonical,
@@ -579,6 +580,8 @@ def score_article(self, article_id, run_id):
     )
     try:
         return score_article_run(article_id, run_id)
+    except BudgetExceededError:
+        return {"article_id": str(article_id), "status": "skipped", "reason": "budget_exceeded"}
     except transient as exc:
         if self.request.retries >= self.max_retries:
             return {"article_id": str(article_id), "status": "failed", "error": str(exc)}
@@ -624,6 +627,8 @@ def generate_article(self, article_id):
     )
     try:
         return _generate_draft_stage(article_id)
+    except BudgetExceededError:
+        return {"article_id": str(article_id), "status": "skipped", "reason": "budget_exceeded"}
     except transient as exc:
         if self.request.retries >= self.max_retries:
             return {"article_id": str(article_id), "status": "failed", "error": str(exc)}

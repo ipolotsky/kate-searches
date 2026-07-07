@@ -1,7 +1,13 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from app.metering import budget_exceeded, month_start_utc
+from app.metering import (
+    DEFAULT_COST_ESTIMATE,
+    budget_exceeded,
+    estimate_for,
+    month_start_utc,
+    period_key_utc,
+)
 
 
 def test_month_start_utc_truncates_to_first_of_month():
@@ -33,3 +39,15 @@ def test_budget_exceeded_below_budget_allows():
 
 def test_budget_exceeded_over_budget_blocks():
     assert budget_exceeded(Decimal("10.01"), Decimal("10")) is True
+
+
+def test_period_key_utc_format():
+    assert period_key_utc(datetime(2026, 7, 6, 13, 0, tzinfo=UTC)) == "2026-07"
+    assert period_key_utc(datetime(2026, 1, 5, tzinfo=UTC)) == "2026-01"
+    assert period_key_utc(datetime(2026, 12, 31, 23, 59, tzinfo=UTC)) == "2026-12"
+
+
+def test_estimate_for_known_and_default_stages():
+    assert estimate_for("score") == Decimal("0.002")
+    assert estimate_for("draft") == Decimal("0.06")
+    assert estimate_for("mystery") == DEFAULT_COST_ESTIMATE

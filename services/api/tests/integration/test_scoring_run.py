@@ -27,6 +27,7 @@ def _allow_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
     # поэтому здесь guard отключаем, как в test_health.
     monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
 
+
 _BODY_HOT = "Hot fresh archive drop unique collector story. " * 30
 _BODY_COLD = "Cold unrelated weather report filler copy. " * 30
 

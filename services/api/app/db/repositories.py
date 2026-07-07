@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import cast, func, select, update
+from sqlalchemy import cast, func, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -56,6 +56,56 @@ def tenant_month_spend(session: Session, tenant_id: uuid.UUID, *, since: datetim
             AiUsage.created_at >= since,
         )
     ).scalar_one()
+
+
+def reserve_budget(
+    session: Session, tenant_id: uuid.UUID, *, period: str, estimate: Decimal, budget: Decimal
+) -> bool:
+    """Атомарно зарезервировать estimate в леджере периода. True — разрешено, False — исчерпан.
+
+    Guard `spent_usd < budget`: вызов, пересекающий бюджет, проходит, следующий — нет (та же
+    семантика, что budget_exceeded: spent >= budget). Конкурентные вызовы сериализуются на строке
+    (tenant_id, period) через unique-индекс, поэтому TOCTOU-гонки нет. Только при budget > 0.
+    """
+    stmt = text(
+        """
+        insert into tenant_budget_ledger (tenant_id, period, spent_usd, updated_at)
+        values (:tenant_id, :period, :estimate, now())
+        on conflict (tenant_id, period) do update
+          set spent_usd = tenant_budget_ledger.spent_usd + excluded.spent_usd,
+              updated_at = now()
+          where tenant_budget_ledger.spent_usd < :budget
+        returning spent_usd
+        """
+    )
+    row = session.execute(
+        stmt,
+        {"tenant_id": tenant_id, "period": period, "estimate": estimate, "budget": budget},
+    ).fetchone()
+    return row is not None
+
+
+def settle_budget(session: Session, tenant_id: uuid.UUID, *, period: str, delta: Decimal) -> None:
+    """Скорректировать леджер на delta (факт - оценка при сверке, или -оценка при рефанде сбоя)."""
+    session.execute(
+        text(
+            "update tenant_budget_ledger set spent_usd = spent_usd + :delta, updated_at = now() "
+            "where tenant_id = :tenant_id and period = :period"
+        ),
+        {"delta": delta, "tenant_id": tenant_id, "period": period},
+    )
+
+
+def ledger_month_spent(session: Session, tenant_id: uuid.UUID, *, period: str) -> Decimal:
+    """Текущее значение леджера за период (0, если строки ещё нет)."""
+    value = session.execute(
+        text(
+            "select spent_usd from tenant_budget_ledger "
+            "where tenant_id = :tenant_id and period = :period"
+        ),
+        {"tenant_id": tenant_id, "period": period},
+    ).scalar_one_or_none()
+    return value if value is not None else Decimal(0)
 
 
 class ArticleRepository:

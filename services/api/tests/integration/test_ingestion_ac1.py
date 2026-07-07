@@ -27,6 +27,7 @@ def _allow_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
     # поэтому здесь guard отключаем, как в test_health.
     monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
 
+
 _LONG_FRESH = "Fresh unique archive drop coverage. " * 30
 _DUP_BODY = "Shared wire copy about the same archive reissue story. " * 30
 _LONG_SHARED = "A distinct syndicated column carried by two feeds verbatim. " * 30
