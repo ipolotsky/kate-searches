@@ -4,23 +4,31 @@ import { Sidebar, SidebarItem, SidebarItemGroup, SidebarItems } from "flowbite-r
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { DashboardIcon, SettingsIcon } from "@/components/ui/icons";
+import { AdminIcon, DashboardIcon, SettingsIcon, UsageIcon } from "@/components/ui/icons";
 
 interface NavEntry {
   segment: string;
-  key: "dashboard" | "settings";
+  key: "dashboard" | "settings" | "usage" | "admin";
   icon: React.FC<React.SVGProps<SVGSVGElement>>;
 }
 
-const ENTRIES: NavEntry[] = [
+interface AppSidebarProps {
+  isPlatformAdmin: boolean;
+}
+
+const BASE_ENTRIES: NavEntry[] = [
   { segment: "dashboard", key: "dashboard", icon: DashboardIcon },
+  { segment: "usage", key: "usage", icon: UsageIcon },
   { segment: "settings", key: "settings", icon: SettingsIcon },
 ];
 
-export const AppSidebar: React.FC = () => {
+const ADMIN_ENTRY: NavEntry = { segment: "admin", key: "admin", icon: AdminIcon };
+
+export const AppSidebar: React.FC<AppSidebarProps> = (props) => {
   const t = useTranslations("nav");
   const locale = useLocale();
   const pathname = usePathname();
+  const entries = props.isPlatformAdmin ? [...BASE_ENTRIES, ADMIN_ENTRY] : BASE_ENTRIES;
 
   const isActive = (segment: string): boolean =>
     pathname === `/${locale}/${segment}` || pathname.startsWith(`/${locale}/${segment}/`);
@@ -32,7 +40,7 @@ export const AppSidebar: React.FC = () => {
     >
       <SidebarItems>
         <SidebarItemGroup>
-          {ENTRIES.map((x) => (
+          {entries.map((x) => (
             <SidebarItem
               key={x.segment}
               as={Link}

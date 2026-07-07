@@ -6,7 +6,9 @@
     "mainNav": "Main navigation",
     "dashboard": "Dashboard",
     "sources": "Sources",
-    "settings": "Settings"
+    "settings": "Settings",
+    "usage": "Usage",
+    "admin": "Admin"
   },
   "common": {
     "toasts": {
@@ -58,6 +60,7 @@
       "queued": "Generation queued. Drafts appear after the run.",
       "nothing": "Those stories are no longer eligible for drafting.",
       "failed": "Could not start generation",
+      "budgetExceeded": "Monthly budget reached — generation is paused. See Usage.",
       "selectAll": "Select all"
     },
     "runPipeline": {
@@ -249,6 +252,87 @@
       "fetch_timeout": "Fetch timed out",
       "fetch_error": "Fetch failed",
       "empty_feed": "The feed is empty"
+    }
+  },
+  "usage": {
+    "title": "Usage & budget",
+    "subtitle": "Your monthly AI spend against the plan budget",
+    "plan": "Plan",
+    "spend": "Spent this month",
+    "budget": "Monthly budget",
+    "percentUsed": "{percent}% of budget used",
+    "draftsThisMonth": "Drafts this month",
+    "byStage": "Spend by stage",
+    "stage": "Stage",
+    "cost": "Cost",
+    "calls": "Calls",
+    "noSpend": "No AI spend recorded this month yet.",
+    "stages": {
+      "score": "Scoring",
+      "draft": "Drafting",
+      "extract": "Extraction",
+      "other": "Other"
+    },
+    "limits": {
+      "title": "Plan limits",
+      "sources": "Sources: {value}",
+      "drafts": "Drafts / month: {value}",
+      "unlimited": "Unlimited"
+    },
+    "upsell": {
+      "noticeTitle": "You've used {percent}% of your monthly budget",
+      "noticeBody": "Keep an eye on your usage this month.",
+      "upsellTitle": "You've used {percent}% of your monthly budget",
+      "upsellBody": "Consider moving to a higher plan to keep generating without limits.",
+      "blockedTitle": "Monthly budget reached",
+      "blockedBody": "Generation is paused for this month. Top up your budget or move to a higher plan to continue.",
+      "cta": "View usage"
+    }
+  },
+  "admin": {
+    "title": "Tenants",
+    "subtitle": "AI spend and plans across all tenants",
+    "empty": "No tenants yet.",
+    "table": {
+      "name": "Tenant",
+      "plan": "Plan",
+      "spend": "Spend",
+      "budget": "Budget",
+      "percent": "Used",
+      "drafts": "Drafts",
+      "users": "Users",
+      "created": "Created"
+    },
+    "detail": {
+      "back": "Back to tenants",
+      "spendThisMonth": "Spend this month",
+      "byStage": "Spend by stage",
+      "stage": "Stage",
+      "cost": "Cost",
+      "calls": "Calls",
+      "noSpend": "No AI spend recorded this month yet.",
+      "planLimits": "Plan limits (informational)",
+      "price": "Plan price",
+      "reservedMargin": "Reserved margin",
+      "sources": "Sources",
+      "drafts": "Drafts / month",
+      "unlimited": "Unlimited"
+    },
+    "form": {
+      "title": "Plan & budget",
+      "plan": "Plan",
+      "budget": "Monthly budget (USD)",
+      "budgetHint": "Default for the selected plan is prefilled; you can override it.",
+      "threshold": "Upsell threshold (%)",
+      "save": "Save",
+      "saved": "Tenant updated",
+      "failed": "Could not update tenant"
+    },
+    "stages": {
+      "score": "Scoring",
+      "draft": "Drafting",
+      "extract": "Extraction",
+      "other": "Other"
     }
   }
 }

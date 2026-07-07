@@ -17,7 +17,8 @@ from app.adapters import REGISTRY
 from app.adapters.base import FetchRequest
 from app.db.engine import session_scope
 from app.db.models import Tenant
-from app.db.repositories import ArticleRepository, PipelineRunRepository
+from app.db.repositories import ArticleRepository, PipelineRunRepository, tenant_month_spend
+from app.metering import budget_exceeded, month_start_utc
 from app.pipeline.dedup import _safe_zone, is_novel
 
 router = APIRouter()
@@ -79,6 +80,7 @@ class GenerateResponse(BaseModel):
     queued: bool
     count: int
     detail: str
+    budget_exceeded: bool = False
 
 
 @router.post("/internal/pipeline/generate", response_model=GenerateResponse)
@@ -90,8 +92,21 @@ def generate_drafts(req: GenerateRequest) -> GenerateResponse:
     tenant_uuid = uuid.UUID(req.tenant_id)
     article_uuids = [uuid.UUID(a) for a in req.article_ids] if req.article_ids is not None else None
     with session_scope() as session:
+        tenant = session.get(Tenant, tenant_uuid)
+        budget = tenant.ai_budget_usd_month if tenant is not None else None
+        spent = tenant_month_spend(session, tenant_uuid, since=month_start_utc())
         count = len(
             ArticleRepository.scored_articles(session, tenant_uuid, article_ids=article_uuids)
+        )
+
+    # Hard-cap: гейтим только генерацию (дорогая стадия). Скоринг/ingestion не трогаем.
+    if budget_exceeded(spent, budget):
+        return GenerateResponse(
+            tenant_id=req.tenant_id,
+            queued=False,
+            count=count,
+            detail="budget_exceeded",
+            budget_exceeded=True,
         )
 
     if count == 0:

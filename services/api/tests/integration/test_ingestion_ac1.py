@@ -19,6 +19,14 @@ from app.worker.tasks import finalize_fetch, run_tenant_pipeline_sync
 
 pytestmark = pytest.mark.integration
 
+
+@pytest.fixture(autouse=True)
+def _allow_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SSRF-guard (assert_public_url) в проде всегда включён и НЕ гейтится ingestion_guards_enabled.
+    # .test-хосты фикстур не резолвятся (dns_error), а фид мокается и реальной сети нет —
+    # поэтому здесь guard отключаем, как в test_health.
+    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
+
 _LONG_FRESH = "Fresh unique archive drop coverage. " * 30
 _DUP_BODY = "Shared wire copy about the same archive reissue story. " * 30
 _LONG_SHARED = "A distinct syndicated column carried by two feeds verbatim. " * 30

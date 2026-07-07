@@ -300,7 +300,49 @@ E2E прогнан в браузере (Chrome DevTools MCP) на реально
 
 Хвосты M4 (follow-ups, не блокеры): SSRF IP-pinning против DNS-rebinding; Realtime-обновление дашборда вместо ручного refresh; owner-only гейтинг действий; визард-онбординг вместо одностраничных настроек.
 
-Дальше - M5 (usage/бюджет/апселл, метеринг-репорты) и роадмап (автопубликация в CMS, соцсети, Stripe).
+## Статус M5 (админка + метеринг-репорты: usage/бюджет/апселл/hard-cap) — готово
+
+Веха M5 реализована целиком по плану `.claude/plans/handoff-parsed-firefly.md`. Owner видит свой месячный AI-расход и % бюджета с эскалирующими плашками; платформенный админ видит всех тенантов, их расход/бюджет и переключает план/бюджет/порог; генерация черновиков блокируется при исчерпании бюджета.
+
+**Бюджетная модель (решение владельца):** `ai_budget_usd_month` = usable месячный AI-бюджет = цена тарифа × (1 − гарантированная маржа 20%); pilot — фикс $15. Эскалация по `spend/budget`: ≥50% notice, ≥`upsell_threshold_pct` (дефолт 80) upsell, ≥100% blocked. Расход — compute-on-read агрегация `ai_usage` за календарный месяц UTC (без cron-сброса; `ai_spent_usd_month` остаётся derived/мёртвой). Каталог тарифов и пороги — `apps/web/src/lib/plans.ts` (`RESERVED_MARGIN_PCT=20`, `PLAN_CATALOG`).
+
+Что сделано:
+- **Схема** (`supabase/migrations/0005_metering.sql`, аддитивно/идемпотентно): control-таблица `platform_admins` (глобальные админы, RLS self-select `user_id=auth.uid()`, revoke all + grant select), 4 агрегационных RPC. Owner-RPC `tenant_month_spend()` / `tenant_month_usage_by_stage()` — **security invoker** (RLS `ai_usage` скоупит к своему тенанту), execute только authenticated. Admin-RPC `admin_tenant_report(since)` / `admin_tenant_usage_by_stage(tenant, since)` — **security definer** (обходят RLS для кросс-тенант отчёта), execute **только service_role**. RPC нужны, т.к. PostgREST не даёт `sum()` в `.select()` и `[api] max_rows=1000` обрезал бы client-side сумму.
+- **Backend** (`services/api`): `app/metering.py` (`month_start_utc`, `budget_exceeded`), `repositories.tenant_month_spend`. Hard-cap в `app/api/routes.py::generate_drafts` — перед enqueue считает месячный spend и при `spent >= ai_budget_usd_month` возвращает `budget_exceeded=True`, не ставя в очередь. Гейтится **только генерация** (дорогая стадия), скоринг/ingestion не трогаются. `GenerateResponse.budget_exceeded` добавлено обратносовместимо.
+- **Frontend owner** (`apps/web`): `lib/plans.ts`, `lib/usage.ts` (`usagePercent`/`usageLevel`/`formatUsd`/`monthStartIso`), страница `(app)/usage/page.tsx` (spend/бюджет/%, разбивка по стадиям, черновики за месяц, лимиты тарифа), компоненты `usage/UsageSummary` + `usage/UpsellBanner`. Тонкая эскалационная плашка в `(app)/layout.tsx` (подавляется на самой `/usage`). Sidebar-entry `usage`, сегмент в `middleware.ts`, namespace `usage` (en+ru). BFF `_actions/pipeline.ts::generateDrafts` мапит `budget_exceeded` → тост в `ScoredCandidates`.
+- **Frontend admin** (`apps/web`): гейт `lib/auth/platform.ts` (`assertPlatformAdmin`/`isPlatformAdmin` по `platform_admins` через RLS self-select), роут-группа `(app)/admin/*` с вложенным layout-гейтом (не-админ → 404), список тенантов `admin/page.tsx` (service_role RPC), карточка `admin/[tenantId]/page.tsx` + `AdminTenantDetail` + форма `PlanBudgetForm` (смена плана префиллит дефолтный бюджет, override разрешён). Admin CRUD — server action `_actions/admin.ts::updateTenantPlan` под `createAdminClient()` (service_role), с независимым гейтом и валидацией plan/budget/threshold. Sidebar-entry `admin` показывается только платформенному админу. namespace `admin` (en+ru).
+- **Операционка**: `make seed-admin EMAIL=you@example.com [DB=<url>]` — выдать платформенного админа (пользователь уже должен быть зарегистрирован). Управление админами через UI — вне M5.
+
+### Независимый ревью M5 и починенные баги
+
+Прогнан оркестрованный adversarial-review (4 ортогональных линзы: RLS/безопасность, backend/hard-cap, react/next/flowbite, i18n/бюджет-модель × верификация каждой находки). **3 подтверждено, все починены:**
+1. **Кросс-тенант утечка через security-definer RPC (critical, найдено прямой проверкой БД до ревью).** `revoke execute ... from anon, authenticated` НЕ снимает дефолтный `EXECUTE` для роли `PUBLIC` (роли наследуют его через PUBLIC), поэтому `admin_tenant_report`/`admin_tenant_usage_by_stage` были вызываемы любым `authenticated` → обход RLS → чтение данных всех тенантов. Починено `revoke execute ... from public`; переверено (`has_function_privilege('authenticated', ...)=false`) и integration-тестом.
+2. **Глобальный баннер бюджета не срабатывал (medium).** `layout.tsx` брал spend через `typeof spendResult.data === "number"`, но `numeric`-RPC приходит из supabase-js строкой → всегда 0 → плашка эскалации не показывалась нигде, кроме `/usage`. Починено на `Number(spendResult.data ?? 0)` (как для остальных DB-чисел).
+3. **`usagePercent` округление + budget=0 (low).** `Math.round`+кап показывал «100%» при 99.6% (ещё не blocked); при `budget=0` бэк блокировал всё, а фронт показывал «ok». Починено: `Math.floor` (100% = реально исчерпано) и `budget<=0 → blocked/100` с гардом missing-data в layout (консистентно с бэкенд-hard-cap).
+
+Прочие 11 находок отклонены верификацией как false-positive.
+
+### Проверка M5
+
+```bash
+cd apps/web && pnpm typecheck && pnpm test && pnpm build      # tsc + 59 vitest (вкл. UpsellBanner/AdminTenantsTable компонентные) + Next build — зелёные
+make lint                                                     # web eslint + api ruff+format — чисто
+cd services/api && . .venv/bin/activate && pytest -q -m "not integration and not live"   # 116 unit
+RUN_DB_TESTS=1 pytest -q -m integration                       # 19 integration (0 падений): вкл. метеринг-окно spend, RLS-скоупинг owner-RPC, отказ admin-RPC под authenticated, platform_admins self-select/no-write
+```
+
+Верификация безопасности прямой проверкой БД (read-only): `has_function_privilege` подтверждает `admin_*` RPC — execute только `service_role` (`auth_exec=f, anon_exec=f`), owner-RPC — только `authenticated`; `platform_admins` — RLS enabled + self-select, authenticated имеет только SELECT. Изолированные self-cleaning integration-тесты доказывают RLS-скоупинг метеринга end-to-end под ролью `authenticated`.
+
+### Хвосты M5 (follow-ups, не блокеры)
+
+- **Месячный сброс:** compute-on-read авто-сбрасывается на UTC-границе месяца; `ai_spent_usd_month` — мёртвая колонка (никто не читает). Нюанс: граница месяца в UTC, не в таймзоне тенанта.
+- **TOCTOU hard-cap:** конкурентные `/generate` могут оба прочитать `spent < budget` и оба enqueue → небольшой перерасход. Смягчено `claim_for_draft` (не задваивает черновик); строгий per-request enforcement — через LiteLLM virtual keys (TODO в `infra/litellm/config.yaml`).
+- **Управление платформенными админами** — только через SQL/`make seed-admin`; UI — вне M5.
+- **Нет Realtime:** usage/admin-числа — снимок на запрос; owner рефрешит после асинхронной генерации.
+- **Браузерный E2E M5 прогнан** (Chrome DevTools MCP, реальная инфра): регистрация → провижининг тенанта → `/usage` (pilot $0/$15, 0%, пустая разбивка) → `/admin` для не-админа = 404 → `make seed-admin` → sidebar Admin + список тенантов → карточка (лимиты pro $129/20/250) → смена плана pro (бюджет автоподставился $103.20) → save → БД обновлена → override бюджета 0 → save → hard-cap: `/internal/pipeline/generate` вернул `budget_exceeded:true, queued:false` (бюджет проверяется раньше count) → blocked-баннер на `/usage` («Monthly budget reached», 100%) → кросс-апповая плашка на dashboard с CTA «View usage». Тестовый тенант удалён, БД чистая. Примечание: UI-кнопка генерации требует scored-статей (в песочнице нет DNS для пайплайна), поэтому UI-тост hard-cap не кликался — сам эндпоинт и blocked-баннер проверены.
+- **Починены 7 pre-existing integration-тестов** (не были M5-багом): RSS-адаптер зовёт `assert_public_url` (M4 SSRF-guard, всегда включён, не гейтится `ingestion_guards_enabled`), а `.test`-домены не резолвятся в песочнице (`dns_error`) → `fetched:0`. Добавлена autouse-фикстура `_allow_test_hosts` в `test_scoring_run`/`test_generation_run`/`test_ingestion_ac1`, мокающая `app.adapters.rss.assert_public_url` (паттерн `test_health`). Прод-SSRF не ослаблен. Полный сьют зелёный: **116 unit + 19 integration**.
+
+Дальше - M6 (пилот LOOTON) и роадмап (автопубликация в CMS, соцсети, Stripe-биллинг фазы 1.5).
 
 ## Ждём от Kate
 

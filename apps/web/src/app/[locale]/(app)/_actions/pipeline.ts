@@ -44,13 +44,17 @@ export const generateDrafts = async (
     return { ok: false, code: "noArticles" };
   }
 
-  const result = await postInternal<{ queued: boolean; count: number }>(
+  const result = await postInternal<{ queued: boolean; count: number; budget_exceeded?: boolean }>(
     "/internal/pipeline/generate",
     { tenant_id: tenantId, article_ids: ownedIds },
     { timeoutMs: 5000 },
   );
   if (!result.ok) {
     return { ok: false, code: result.code };
+  }
+  // Месячный бюджет исчерпан — генерация заблокирована hard-cap'ом (не ставилась в очередь).
+  if (result.data.budget_exceeded === true) {
+    return { ok: false, code: "budgetExceeded" };
   }
   // Владелец подтверждён, но статьи могли уже уйти из 'scored' (задрафчены ранее) —
   // API вернёт queued:false/count:0 с HTTP 200; это не успех.

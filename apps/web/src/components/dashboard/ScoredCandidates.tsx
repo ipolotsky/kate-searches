@@ -49,6 +49,8 @@ export const ScoredCandidates: React.FC<ScoredCandidatesProps> = (props) => {
     if (result.ok) {
       toast.show(t("dashboard.candidates.queued"), "success");
       setSelected(new Set());
+    } else if (result.code === "budgetExceeded") {
+      toast.show(t("dashboard.candidates.budgetExceeded"), "error");
     } else if (result.code === "nothing") {
       toast.show(t("dashboard.candidates.nothing"), "info");
     } else {

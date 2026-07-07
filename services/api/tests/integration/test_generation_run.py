@@ -20,6 +20,14 @@ from app.worker.tasks import run_tenant_generation_sync, run_tenant_pipeline_syn
 
 pytestmark = pytest.mark.integration
 
+
+@pytest.fixture(autouse=True)
+def _allow_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    # SSRF-guard (assert_public_url) в проде всегда включён и НЕ гейтится ingestion_guards_enabled.
+    # .test-хосты фикстур не резолвятся (dns_error), а фид мокается и реальной сети нет —
+    # поэтому здесь guard отключаем, как в test_health.
+    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
+
 _BODY_HOT = "Hot fresh archive drop unique collector story. " * 30
 _BODY_COLD = "Cold unrelated weather report filler copy. " * 30
 _COST = 0.0123

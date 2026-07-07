@@ -390,6 +390,29 @@ export type Database = {
           },
         ]
       }
+      platform_admins: {
+        Row: {
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_admins_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           ai_cost_usd: number | null
@@ -401,7 +424,6 @@ export type Database = {
           id: string
           json_ld: Json | null
           language: string | null
-          linked_products: Json
           seo: Json
           status: string
           suggested_titles: string[]
@@ -419,7 +441,6 @@ export type Database = {
           id?: string
           json_ld?: Json | null
           language?: string | null
-          linked_products?: Json
           seo?: Json
           status?: string
           suggested_titles?: string[]
@@ -437,7 +458,6 @@ export type Database = {
           id?: string
           json_ld?: Json | null
           language?: string | null
-          linked_products?: Json
           seo?: Json
           status?: string
           suggested_titles?: string[]
@@ -455,53 +475,6 @@ export type Database = {
           },
           {
             foreignKeyName: "posts_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      products: {
-        Row: {
-          attributes: Json
-          brand: string | null
-          category: string | null
-          created_at: string
-          external_id: string | null
-          id: string
-          name: string
-          price: number | null
-          tenant_id: string
-          url: string | null
-        }
-        Insert: {
-          attributes?: Json
-          brand?: string | null
-          category?: string | null
-          created_at?: string
-          external_id?: string | null
-          id?: string
-          name: string
-          price?: number | null
-          tenant_id: string
-          url?: string | null
-        }
-        Update: {
-          attributes?: Json
-          brand?: string | null
-          category?: string | null
-          created_at?: string
-          external_id?: string | null
-          id?: string
-          name?: string
-          price?: number | null
-          tenant_id?: string
-          url?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "products_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -689,7 +662,38 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_tenant_report: {
+        Args: { p_since: string }
+        Returns: {
+          ai_budget_usd_month: number
+          created_at: string
+          drafts_month: number
+          name: string
+          plan: string
+          spend_month: number
+          tenant_id: string
+          upsell_threshold_pct: number
+          users_count: number
+        }[]
+      }
+      admin_tenant_usage_by_stage: {
+        Args: { p_since: string; p_tenant_id: string }
+        Returns: {
+          calls: number
+          cost_usd: number
+          stage: string
+        }[]
+      }
       current_tenant_id: { Args: never; Returns: string }
+      tenant_month_spend: { Args: never; Returns: number }
+      tenant_month_usage_by_stage: {
+        Args: never
+        Returns: {
+          calls: number
+          cost_usd: number
+          stage: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
