@@ -10,14 +10,11 @@
 4. Launch-blocker багфиксы гейтят боевой запуск: чиним до реальных пользователей и до прода.
 5. Stripe запускаем в test mode на проде, остальное в боевом режиме. Флип test to live - заменой секретов без изменений кода.
 
-## Открытая развилка (test mode plus карта-вперёд)
+## Решено: card-first, флип test to live перед рекламой (вариант A)
 
-В Stripe test mode проходят только тестовые карты (`4242...`), поэтому реальный публичный пользователь не завершит card-first checkout. Варианты на окно test-mode:
+Система строится сразу «как положено»: card-first Stripe trial (native `trial_period_days`). В окно test-mode на проде обкатка идёт на тестовых картах Stripe (`4242...`) — владелец и приглашённые тестеры. Публичной воронки «попробовать бесплатно без карты» нет и не будет: перед запуском рекламы Stripe переключается на live-ключи (реальные карты начинают проходить), и это единственное, что нужно сделать перед кампанией.
 
-- Вариант A (по умолчанию): в окне test-mode воронку валидируем на пилоте и приглашённых через тестовые карты; публичную рекламную кампанию «попробовать бесплатно» запускаем после флипа на live-ключи. Проще всего, соответствует «test mode сейчас, кампания позже».
-- Вариант B: на окно test-mode добавить no-card app-enforced триал (дефолтный pilot-state плюс `trial_ends_at`, те же caps $3/10/3) для реальной публики, ретайрим при флипе.
-
-CTA на странице тарифов выводится из префикса publishable-ключа (`pk_test_` против `pk_live_`), так что переключение витрины между режимами автоматическое. Решение по A/B - за владельцем.
+Следствие, которое надо помнить: пока стоят `sk_test_`, реальную карту Stripe отклоняет — публичную рекламу до флипа не запускать. Пилот LOOTON это не касается: он провижинится админом напрямую (Stripe не нужен).
 
 ## Ревью: 13 подтверждённых находок
 
@@ -128,3 +125,22 @@ Milestone M6.3, зависит от M6.2 (trial-ending, budget-threshold).
 - M6.2 Биллинг плюс триал: Stripe test-mode, card-first триал, ledger trial-cap, админ-конфиг, counters, анти-абьюз-lite. Зависит от 2 и 7 из M6.1.
 - M6.3 Resend: модуль, схема, 4 уведомления, вебхуки, DNS. Зависит от M6.2.
 - M6.4 Остаток корректности: находки 8, 9, 13.
+
+## Статус реализации
+
+- M6.0 UX — сделано.
+- M6.1 launch-blockers (1, 2, 3, 7, 6, 12, 4, 5, 10, 11) — сделано. Миграция `0007_reliability.sql`.
+- M6.2 биллинг + триал — сделано. Миграция `0008_billing.sql`. Stripe в web (config/checkout/portal/webhook), Python trial-энфорс (period 'trial', score-gate, expiry, drafts/sources лимиты), UI (billing-страница, TEST MODE баннер, trial-meter, start-trial баннер), card-first (регистрация с бюджетом 0).
+- M6.3 Resend — сделано. Миграция `0009_email.sql`. Python email-модуль (`app/email`), 4 уведомления, Celery-очередь `emails` + beat-скан, digest после `finalize_run`, вебхук/unsubscribe (Svix-проверка в Python, web-прокси).
+- M6.4 (находки 8, 9, 13) — отложено.
+
+Проверено локально: API 154 unit-теста + ruff; web tsc + lint + 68 тестов. Integration-тесты (нужен Supabase-стек) и живой e2e — на этапе деплоя.
+
+## Pre-deploy чеклист
+
+1. Применить миграции 0007-0009 (схема раньше кода; `make db-migrate` теперь fail-fast).
+2. Прогнать `make test-integration` на Supabase-стеке (стейт-машина статей, trial-энфорс, RLS).
+3. Stripe (test mode): создать Products/Prices в test-дашборде, проставить `STRIPE_SECRET_KEY` (sk_test_), `STRIPE_WEBHOOK_SECRET`, три `STRIPE_PRICE_*`; зарегистрировать webhook endpoint `https://<domain>/api/stripe/webhook`; включить `billing_enabled` приглашённым тенантам.
+4. Resend: верифицировать домен (DKIM/SPF/DMARC на поддомене), проставить `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_FROM`, `APP_BASE_URL`; webhook endpoint `https://<domain>/api/resend/webhook`; Resend Pro.
+5. Провижининг пилота LOOTON — админом (бюджет/план), т.к. self-serve регистрация теперь даёт бюджет 0.
+6. Перед публичной рекламой — флип Stripe test to live (замена `sk_`/`pk_`/`whsec_`/трёх `price_` + передеплой + re-provisioning тестовых подписок): пока `sk_test_`, реальные карты не проходят.

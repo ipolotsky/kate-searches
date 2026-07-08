@@ -37,6 +37,12 @@ class Settings(BaseSettings):
 
     firecrawl_api_key: str = ""
 
+    # Email (M6.3, Resend). Слать из Python/Celery. Пусто = email выключен (dev/тесты не шлют).
+    resend_api_key: str = ""
+    resend_webhook_secret: str = ""
+    email_from: str = "KateSearches <notifications@taskyou.me>"
+    app_base_url: str = "http://localhost:3000"
+
     # Ingestion (M1): identifiable UA, таймауты и троттлинг скрапинга.
     user_agent: str = "KateSearchesBot/1.0 (+https://katesearches.com/bot)"
     fetch_timeout_seconds: float = 15.0

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { postInternal } from "@/lib/api/internal";
 import { routing } from "@/i18n/routing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -47,9 +48,12 @@ export const register = async (formData: FormData): Promise<void> => {
   // Провижининг под service_role (обходит RLS). При сбое откатываем частичное состояние.
   const userId = signUp.data.user.id;
   const admin = createAdminClient();
+  // Card-first: самостоятельная регистрация НЕ даёт бесплатного AI-бюджета (иначе любой аккаунт
+  // жжёт LLM без карты). Бюджет появляется после старта триала через Stripe Checkout (вебхук
+  // ставит триальный cap) либо гранта платформенного админа. Пилот провижинит админ.
   const tenant = await admin
     .from("tenants")
-    .insert({ name: company, default_locale: locale })
+    .insert({ name: company, default_locale: locale, ai_budget_usd_month: 0 })
     .select("id")
     .single();
   if (tenant.error != null) {
@@ -68,6 +72,13 @@ export const register = async (formData: FormData): Promise<void> => {
     await admin.auth.admin.deleteUser(userId);
     redirect(`/${locale}/register?error=1`);
   }
+  // Welcome-письмо (best-effort через Python-сервис; postInternal не бросает, ошибку игнорируем).
+  await postInternal("/internal/notify/welcome", {
+    user_id: userId,
+    tenant_id: tenant.data.id,
+    email,
+    locale,
+  });
   redirect(`/${locale}/dashboard`);
 };
 

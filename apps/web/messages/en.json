@@ -8,7 +8,8 @@
     "sources": "Sources",
     "settings": "Settings",
     "usage": "Usage",
-    "admin": "Admin"
+    "admin": "Admin",
+    "billing": "Billing"
   },
   "common": {
     "toasts": {
@@ -237,7 +238,8 @@
       "timeout": "Test timed out",
       "networkError": "Could not reach the service",
       "apiError": "The service returned an error"
-    }
+    },
+    "trialSourcesLimit": "Trial limit reached: upgrade to add more sources."
   },
   "sourceTest": {
     "sample": "Sample ({count})",
@@ -357,5 +359,35 @@
         "failed": "Could not complete the action"
       }
     }
+  },
+  "billing": {
+    "title": "Billing & plan",
+    "subtitle": "Manage your subscription and trial.",
+    "testMode": "Test mode: payments are simulated. Use Stripe test cards only.",
+    "currentPlan": "Current plan",
+    "status": "Status",
+    "statusTrialing": "Trial",
+    "statusActive": "Active",
+    "statusPastDue": "Payment due",
+    "statusNone": "No subscription",
+    "trialDaysLeft": "{days} days left in trial",
+    "trialDraftsUsed": "Drafts used: {used} of {limit}",
+    "startTrial": "Start free trial",
+    "choose": "Choose {plan}",
+    "manageBilling": "Manage billing",
+    "billingDisabled": "Billing is not enabled for your account yet.",
+    "perMonth": "/mo",
+    "sourcesLabel": "Sources",
+    "draftsLabel": "Drafts included",
+    "redirecting": "Redirecting…",
+    "errorGeneric": "Something went wrong. Try again.",
+    "errorBillingDisabled": "Billing is not enabled for your account.",
+    "errorNoCustomer": "No subscription to manage yet.",
+    "errorNotConfigured": "Billing is not configured.",
+    "trialNote": "7-day free trial, card required, cancel anytime.",
+    "planStarter": "Starter",
+    "planPro": "Pro",
+    "planAgency": "Agency",
+    "needTrial": "Start your free trial to begin generating drafts."
   }
 }

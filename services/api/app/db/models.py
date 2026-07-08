@@ -42,6 +42,14 @@ class Tenant(Base):
     default_locale: Mapped[str] = mapped_column(Text, server_default=text("'en'"))
     timezone: Mapped[str] = mapped_column(Text, server_default=text("'UTC'"))
     pipeline_hour_local: Mapped[int] = mapped_column(SmallInteger, server_default=text("6"))
+    stripe_customer_id: Mapped[str | None] = mapped_column(Text)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(Text)
+    subscription_status: Mapped[str | None] = mapped_column(Text)
+    current_period_end: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    trial_ends_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    billing_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    trial_drafts_limit: Mapped[int | None] = mapped_column(Integer)
+    trial_sources_limit: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=text("now()")
     )
@@ -283,6 +291,64 @@ class PipelineRun(Base):
     drafted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     failed: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     stats: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class EmailPreference(Base):
+    __tablename__ = "email_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    digest_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    product_updates_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    unsubscribe_token: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), server_default=text("gen_random_uuid()")
+    )
+    consent_source: Mapped[str | None] = mapped_column(Text)
+    consent_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+
+
+class EmailSuppression(Base):
+    __tablename__ = "email_suppression"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL")
+    )
+    email: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    source_event_id: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
+
+
+class EmailDispatchLog(Base):
+    __tablename__ = "email_dispatch_log"
+    __table_args__ = (UniqueConstraint("user_id", "notification_type", "dedup_key"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL")
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    notification_type: Mapped[str] = mapped_column(Text)
+    dedup_key: Mapped[str] = mapped_column(Text)
+    resend_email_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'sent'"))
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=text("now()")
+    )
 
 
 class SourceSecret(Base):

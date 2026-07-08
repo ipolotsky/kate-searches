@@ -14,6 +14,9 @@ EXPECTED_TABLES = {
     "article_sources",
     "pipeline_runs",
     "source_secrets",
+    "email_preferences",
+    "email_suppression",
+    "email_dispatch_log",
 }
 
 

@@ -13,6 +13,11 @@ export const DEFAULT_UPSELL_THRESHOLD_PCT = 80;
 export const USAGE_NOTICE_PCT = 50;
 export const PILOT_FREE_BUDGET_USD = 15;
 
+// Триал (M6.2): value-fence лимиты по умолчанию. Совпадают с бэкендом (metering.py),
+// per-tenant оверрайд — колонки tenants.trial_drafts_limit/trial_sources_limit.
+export const TRIAL_DRAFTS_LIMIT = 10;
+export const TRIAL_SOURCES_LIMIT = 3;
+
 export interface PlanSpec {
   price: number;
   usableBudget: number;

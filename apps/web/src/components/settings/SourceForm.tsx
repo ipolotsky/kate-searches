@@ -105,7 +105,10 @@ export const SourceForm: React.FC<SourceFormProps> = (props) => {
       toast.show(t("saved"), "success");
       props.onDone();
     } else {
-      toast.show(t("saveFailed"), "error");
+      toast.show(
+        result.code === "trialSourcesLimit" ? t("trialSourcesLimit") : t("saveFailed"),
+        "error",
+      );
     }
   };
 

@@ -8,7 +8,8 @@
     "sources": "Источники",
     "settings": "Настройки",
     "usage": "Расход",
-    "admin": "Админка"
+    "admin": "Админка",
+    "billing": "Оплата"
   },
   "common": {
     "toasts": {
@@ -237,7 +238,8 @@
       "timeout": "Проверка не уложилась в таймаут",
       "networkError": "Не удалось достучаться до сервиса",
       "apiError": "Сервис вернул ошибку"
-    }
+    },
+    "trialSourcesLimit": "Лимит триала: чтобы добавить больше источников, оформите тариф."
   },
   "sourceTest": {
     "sample": "Примеры ({count})",
@@ -357,5 +359,35 @@
         "failed": "Не удалось выполнить действие"
       }
     }
+  },
+  "billing": {
+    "title": "Оплата и тариф",
+    "subtitle": "Управление подпиской и триалом.",
+    "testMode": "Тестовый режим: оплата симулируется. Используйте только тестовые карты Stripe.",
+    "currentPlan": "Текущий тариф",
+    "status": "Статус",
+    "statusTrialing": "Триал",
+    "statusActive": "Активна",
+    "statusPastDue": "Ожидает оплаты",
+    "statusNone": "Нет подписки",
+    "trialDaysLeft": "Осталось дней триала: {days}",
+    "trialDraftsUsed": "Черновиков использовано: {used} из {limit}",
+    "startTrial": "Начать бесплатный триал",
+    "choose": "Выбрать {plan}",
+    "manageBilling": "Управление подпиской",
+    "billingDisabled": "Оплата для вашего аккаунта пока не включена.",
+    "perMonth": "/мес",
+    "sourcesLabel": "Источники",
+    "draftsLabel": "Черновиков включено",
+    "redirecting": "Переход…",
+    "errorGeneric": "Что-то пошло не так. Попробуйте ещё раз.",
+    "errorBillingDisabled": "Оплата для вашего аккаунта не включена.",
+    "errorNoCustomer": "Пока нечем управлять — подписки нет.",
+    "errorNotConfigured": "Оплата не настроена.",
+    "trialNote": "7 дней бесплатно, нужна карта, отмена в любой момент.",
+    "planStarter": "Starter",
+    "planPro": "Pro",
+    "planAgency": "Agency",
+    "needTrial": "Начните бесплатный триал, чтобы генерировать черновики."
   }
 }

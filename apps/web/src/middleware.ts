@@ -5,7 +5,15 @@ import { updateSession } from "./lib/supabase/middleware";
 
 const intlMiddleware = createIntlMiddleware(routing);
 
-const PROTECTED_SEGMENTS = ["dashboard", "posts", "articles", "settings", "usage", "admin"];
+const PROTECTED_SEGMENTS = [
+  "dashboard",
+  "posts",
+  "articles",
+  "settings",
+  "usage",
+  "admin",
+  "billing",
+];
 
 function localeOf(pathname: string): string {
   const first = pathname.split("/").filter(Boolean)[0];

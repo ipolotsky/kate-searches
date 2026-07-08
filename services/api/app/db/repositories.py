@@ -8,12 +8,23 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import cast, func, select, text, update
+from sqlalchemy import cast, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.db.models import AiUsage, Article, ArticleSource, BrandProfile, PipelineRun, Post, Source
+from app.db.models import (
+    AiUsage,
+    Article,
+    ArticleSource,
+    BrandProfile,
+    EmailDispatchLog,
+    EmailPreference,
+    EmailSuppression,
+    PipelineRun,
+    Post,
+    Source,
+)
 from app.models import Document, DraftPost
 
 _LIVE_STATUSES = ("new", "extracted")
@@ -480,6 +491,15 @@ class PostRepository:
     """Персист черновиков: DraftPost -> строка posts (тело + AEO-разметка + атрибуция стоимости)."""
 
     @staticmethod
+    def count_posts(session: Session, tenant_id: uuid.UUID) -> int:
+        """Всего черновиков тенанта — value-fence лимита драфтов на триале (ещё не конвертился)."""
+        return int(
+            session.execute(
+                select(func.count()).select_from(Post).where(Post.tenant_id == tenant_id)
+            ).scalar_one()
+        )
+
+    @staticmethod
     def create_from_draft(
         session: Session,
         *,
@@ -513,6 +533,124 @@ class PostRepository:
         session.add(post)
         session.flush()
         return post.id
+
+
+class EmailRepository:
+    """Предпочтения, suppression и идемпотентность/аудит отправок email (всё под service_role)."""
+
+    @staticmethod
+    def get_or_create_preferences(
+        session: Session,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        consent_source: str = "signup",
+    ) -> EmailPreference:
+        session.execute(
+            pg_insert(EmailPreference)
+            .values(user_id=user_id, tenant_id=tenant_id, consent_source=consent_source)
+            .on_conflict_do_nothing(index_elements=["user_id"])
+        )
+        session.flush()
+        pref = session.get(EmailPreference, user_id)
+        assert pref is not None
+        return pref
+
+    @staticmethod
+    def is_suppressed(session: Session, email_norm: str) -> bool:
+        return (
+            session.execute(
+                select(EmailSuppression.id).where(EmailSuppression.email == email_norm)
+            ).first()
+            is not None
+        )
+
+    @staticmethod
+    def add_suppression(
+        session: Session,
+        *,
+        email_norm: str,
+        reason: str,
+        tenant_id: uuid.UUID | None = None,
+        source_event_id: str | None = None,
+    ) -> None:
+        session.execute(
+            pg_insert(EmailSuppression)
+            .values(
+                email=email_norm,
+                reason=reason,
+                tenant_id=tenant_id,
+                source_event_id=source_event_id,
+            )
+            .on_conflict_do_nothing(index_elements=["email"])
+        )
+
+    @staticmethod
+    def claim_dispatch(
+        session: Session,
+        *,
+        tenant_id: uuid.UUID | None,
+        user_id: uuid.UUID,
+        notification_type: str,
+        dedup_key: str,
+    ) -> bool:
+        """Insert-before-send: True — можно слать, False — уже отправляли (дубль на ретрае)."""
+        row = session.execute(
+            pg_insert(EmailDispatchLog)
+            .values(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                notification_type=notification_type,
+                dedup_key=dedup_key,
+                status="pending",
+            )
+            .on_conflict_do_nothing(index_elements=["user_id", "notification_type", "dedup_key"])
+            .returning(EmailDispatchLog.id)
+        ).first()
+        return row is not None
+
+    @staticmethod
+    def release_dispatch(
+        session: Session, *, user_id: uuid.UUID, notification_type: str, dedup_key: str
+    ) -> None:
+        """Снять claim при сбое отправки (чтобы повтор был возможен)."""
+        session.execute(
+            delete(EmailDispatchLog).where(
+                EmailDispatchLog.user_id == user_id,
+                EmailDispatchLog.notification_type == notification_type,
+                EmailDispatchLog.dedup_key == dedup_key,
+            )
+        )
+
+    @staticmethod
+    def mark_dispatch_sent(
+        session: Session,
+        *,
+        user_id: uuid.UUID,
+        notification_type: str,
+        dedup_key: str,
+        resend_email_id: str | None,
+    ) -> None:
+        session.execute(
+            update(EmailDispatchLog)
+            .where(
+                EmailDispatchLog.user_id == user_id,
+                EmailDispatchLog.notification_type == notification_type,
+                EmailDispatchLog.dedup_key == dedup_key,
+            )
+            .values(status="sent", resend_email_id=resend_email_id)
+        )
+
+    @staticmethod
+    def unsubscribe_by_token(session: Session, token: uuid.UUID) -> bool:
+        """Отписка от digest по токену из письма (one-click). True — токен найден."""
+        return bool(
+            session.execute(
+                update(EmailPreference)
+                .where(EmailPreference.unsubscribe_token == token)
+                .values(digest_enabled=False, updated_at=func.now())
+            ).rowcount
+        )
 
 
 class SourceRepository:

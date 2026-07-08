@@ -55,7 +55,7 @@ services:
   worker:
     image: ghcr.io/ipolotsky/kate-searches/api:${API_TAG}
     restart: unless-stopped
-    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract,score,generate", "-l", "info", "--concurrency", "2"]
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract,score,generate,emails", "-l", "info", "--concurrency", "2"]
     env_file: [.env]
     environment:
       REDIS_URL: redis://redis:6379/0

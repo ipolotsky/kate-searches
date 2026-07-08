@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getUserAndTenant } from "@/lib/auth/tenant";
+import { TRIAL_SOURCES_LIMIT } from "@/lib/plans";
 import type { Json } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
 import type { VoiceExample } from "@/lib/types";
@@ -70,6 +71,23 @@ export const upsertSource = async (
 ): Promise<ActionResult> => {
   const { tenantId } = await getUserAndTenant(locale);
   const supabase = await createClient();
+
+  // Триал: value-fence по числу источников (ограничивает объём scoring). Только на новый источник.
+  if (input.id == null) {
+    const tenant = await supabase
+      .from("tenants")
+      .select("subscription_status, trial_sources_limit")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (tenant.data?.subscription_status === "trialing") {
+      const limit = tenant.data.trial_sources_limit ?? TRIAL_SOURCES_LIMIT;
+      const count = await supabase.from("sources").select("id", { count: "exact", head: true });
+      if ((count.count ?? 0) >= limit) {
+        return { ok: false, code: "trialSourcesLimit" };
+      }
+    }
+  }
+
   const base = {
     type: input.type,
     url: input.url,

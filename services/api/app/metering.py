@@ -12,6 +12,22 @@ class BudgetExceededError(Exception):
     """LLM-вызов заблокирован: месячный бюджет тенанта исчерпан (строгий hard-cap)."""
 
 
+class TrialExpiredError(BudgetExceededError):
+    """Триал истёк (окно между trial_end и вебхуком-даунгрейдом): дорогие вызовы блокируем.
+
+    Подкласс BudgetExceededError — существующие обработчики (score/generate таски) трактуют
+    как budget-block и возвращают skipped.
+    """
+
+
+# Триал (M6.2): card-first Stripe trial, наш ledger держит COGS-cap на время trialing. Ключ периода
+# фиксированный ('trial'), а не 'YYYY-MM': иначе триал на стыке месяцев сам себе рефилит бюджет.
+TRIAL_PERIOD_KEY = "trial"
+# Value-fence лимиты триала (не денежная механика). Дефолты; per-tenant оверрайд — колонки tenants.
+TRIAL_DEFAULT_DRAFTS_LIMIT = 10
+TRIAL_DEFAULT_SOURCES_LIMIT = 3
+
+
 def month_start_utc(now: datetime | None = None) -> datetime:
     """Начало текущего календарного месяца в UTC (граница окна расхода)."""
     reference = now if now is not None else datetime.now(UTC)

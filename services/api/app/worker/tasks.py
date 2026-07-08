@@ -22,8 +22,10 @@ from app.db.repositories import (
     ArticleRepository,
     PipelineRunRepository,
     SourceRepository,
+    tenant_month_spend,
 )
-from app.metering import BudgetExceededError
+from app.email import notifications
+from app.metering import BudgetExceededError, month_start_utc, period_key_utc
 from app.pipeline.dedup import (
     hamming,
     is_better_canonical,
@@ -606,7 +608,15 @@ def score_article(self, article_id, run_id):
 
 @celery_app.task(name="finalize_run")
 def finalize_run_task(results, tenant_id, run_id, fetch_stats=None):
-    return finalize_run(tenant_id, run_id, fetch_stats=fetch_stats or {})
+    result = finalize_run(tenant_id, run_id, fetch_stats=fetch_stats or {})
+    # Дайджест после дневного прогона: «отобрано N, M сильных попаданий». Идемпотентно по run_id.
+    counters = result.get("counters", {})
+    selected = int(counters.get("scored", 0)) + int(counters.get("filtered_out", 0))
+    if selected > 0:
+        send_digest_email.delay(
+            str(tenant_id), str(run_id), selected, int(counters.get("scored", 0))
+        )
+    return result
 
 
 # ─────────────────────────────────────────── Генерация черновиков (on-demand chord)
@@ -654,3 +664,82 @@ def generate_article(self, article_id):
 @celery_app.task(name="finalize_generation")
 def finalize_generation(results, tenant_id):
     return _finalize_generation(results or [])
+
+
+# ─────────────────────────────────────────── Email-уведомления (Resend, очередь emails)
+
+
+@celery_app.task(name="send_digest_email", bind=True, max_retries=3)
+def send_digest_email(self, tenant_id, run_id, selected, matches):
+    try:
+        return {
+            "sent": notifications.send_digest(
+                tenant_id=tenant_id, run_id=run_id, selected=int(selected), matches=int(matches)
+            )
+        }
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=min(300, 30 * (2**self.request.retries))) from exc
+
+
+@celery_app.task(name="send_welcome_email", bind=True, max_retries=3)
+def send_welcome_email(self, user_id, tenant_id, email, locale):
+    try:
+        notifications.send_welcome(user_id=user_id, tenant_id=tenant_id, email=email, locale=locale)
+        return {"status": "ok"}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=min(300, 30 * (2**self.request.retries))) from exc
+
+
+@celery_app.task(name="send_trial_ending_email", bind=True, max_retries=3)
+def send_trial_ending_email(self, tenant_id, days, dedup_key):
+    try:
+        return {
+            "sent": notifications.send_trial_ending(
+                tenant_id=tenant_id, days=int(days), dedup_key=dedup_key
+            )
+        }
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=min(300, 30 * (2**self.request.retries))) from exc
+
+
+@celery_app.task(name="send_budget_threshold_email", bind=True, max_retries=3)
+def send_budget_threshold_email(self, tenant_id, pct, dedup_key):
+    try:
+        return {
+            "sent": notifications.send_budget_threshold(
+                tenant_id=tenant_id, pct=int(pct), dedup_key=dedup_key
+            )
+        }
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=min(300, 30 * (2**self.request.retries))) from exc
+
+
+@celery_app.task(name="scan_email_notifications")
+def scan_email_notifications() -> dict:
+    """Beat: trial-ending (за <=3 дня) и budget-threshold (50/80/100%). Идемпотентно."""
+    import math
+
+    now = datetime.now(UTC)
+    budget_jobs: list[tuple[str, int, str]] = []
+    trial_jobs: list[tuple[str, int, str]] = []
+    with session_scope() as session:
+        for tenant in session.execute(select(Tenant)).scalars():
+            trialing = tenant.subscription_status == "trialing"
+            period = "trial" if trialing else period_key_utc(now)
+            budget = tenant.ai_budget_usd_month
+            if budget is not None and budget > 0:
+                spent = tenant_month_spend(session, tenant.id, since=month_start_utc(now))
+                pct = float(spent) / float(budget) * 100
+                for bucket in (50, 80, 100):
+                    if pct >= bucket:
+                        budget_jobs.append((str(tenant.id), bucket, f"{period}:{bucket}"))
+            if trialing and tenant.trial_ends_at is not None:
+                days = math.ceil((tenant.trial_ends_at - now).total_seconds() / 86400)
+                if 0 <= days <= 3:
+                    dedup = f"trial:{tenant.trial_ends_at.date().isoformat()}"
+                    trial_jobs.append((str(tenant.id), max(days, 0), dedup))
+    for tenant_id, pct, dedup in budget_jobs:
+        send_budget_threshold_email.delay(tenant_id, pct, dedup)
+    for tenant_id, days, dedup in trial_jobs:
+        send_trial_ending_email.delay(tenant_id, days, dedup)
+    return {"budget": len(budget_jobs), "trial": len(trial_jobs)}

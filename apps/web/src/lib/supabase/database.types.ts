@@ -587,38 +587,80 @@ export type Database = {
         Row: {
           ai_budget_usd_month: number
           ai_spent_usd_month: number
+          billing_enabled: boolean
           created_at: string
+          current_period_end: string | null
           default_locale: string
           id: string
           name: string
           pipeline_hour_local: number
           plan: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string | null
           timezone: string
+          trial_drafts_limit: number | null
+          trial_ends_at: string | null
+          trial_sources_limit: number | null
           upsell_threshold_pct: number
         }
         Insert: {
           ai_budget_usd_month?: number
           ai_spent_usd_month?: number
+          billing_enabled?: boolean
           created_at?: string
+          current_period_end?: string | null
           default_locale?: string
           id?: string
           name: string
           pipeline_hour_local?: number
           plan?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
           timezone?: string
+          trial_drafts_limit?: number | null
+          trial_ends_at?: string | null
+          trial_sources_limit?: number | null
           upsell_threshold_pct?: number
         }
         Update: {
           ai_budget_usd_month?: number
           ai_spent_usd_month?: number
+          billing_enabled?: boolean
           created_at?: string
+          current_period_end?: string | null
           default_locale?: string
           id?: string
           name?: string
           pipeline_hour_local?: number
           plan?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
           timezone?: string
+          trial_drafts_limit?: number | null
+          trial_ends_at?: string | null
+          trial_sources_limit?: number | null
           upsell_threshold_pct?: number
+        }
+        Relationships: []
+      }
+      stripe_events: {
+        Row: {
+          event_id: string
+          received_at: string
+          type: string | null
+        }
+        Insert: {
+          event_id: string
+          received_at?: string
+          type?: string | null
+        }
+        Update: {
+          event_id?: string
+          received_at?: string
+          type?: string | null
         }
         Relationships: []
       }

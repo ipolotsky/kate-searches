@@ -4,11 +4,17 @@ import { Sidebar, SidebarItem, SidebarItemGroup, SidebarItems } from "flowbite-r
 import { useLocale, useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AdminIcon, DashboardIcon, SettingsIcon, UsageIcon } from "@/components/ui/icons";
+import {
+  AdminIcon,
+  BillingIcon,
+  DashboardIcon,
+  SettingsIcon,
+  UsageIcon,
+} from "@/components/ui/icons";
 
 interface NavEntry {
   segment: string;
-  key: "dashboard" | "settings" | "usage" | "admin";
+  key: "dashboard" | "settings" | "usage" | "billing" | "admin";
   icon: React.FC<React.SVGProps<SVGSVGElement>>;
 }
 
@@ -19,6 +25,7 @@ interface AppSidebarProps {
 const BASE_ENTRIES: NavEntry[] = [
   { segment: "dashboard", key: "dashboard", icon: DashboardIcon },
   { segment: "usage", key: "usage", icon: UsageIcon },
+  { segment: "billing", key: "billing", icon: BillingIcon },
   { segment: "settings", key: "settings", icon: SettingsIcon },
 ];
 

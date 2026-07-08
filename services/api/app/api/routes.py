@@ -15,10 +15,17 @@ from pydantic import BaseModel, ValidationError
 
 from app.adapters import REGISTRY
 from app.adapters.base import FetchRequest
+from app.config import settings
 from app.db.engine import session_scope
 from app.db.models import Tenant
-from app.db.repositories import ArticleRepository, PipelineRunRepository, tenant_month_spend
-from app.metering import budget_exceeded, month_start_utc
+from app.db.repositories import (
+    ArticleRepository,
+    EmailRepository,
+    PipelineRunRepository,
+    PostRepository,
+    tenant_month_spend,
+)
+from app.metering import TRIAL_DEFAULT_DRAFTS_LIMIT, budget_exceeded, month_start_utc
 from app.pipeline.dedup import _safe_zone, is_novel
 
 router = APIRouter()
@@ -98,6 +105,7 @@ def generate_drafts(req: GenerateRequest) -> GenerateResponse:
         count = len(
             ArticleRepository.scored_articles(session, tenant_uuid, article_ids=article_uuids)
         )
+        trial_drafts_hit = _trial_drafts_exhausted(session, tenant)
 
     # Hard-cap: гейтим только генерацию (дорогая стадия). Скоринг/ingestion не трогаем.
     if budget_exceeded(spent, budget):
@@ -106,6 +114,16 @@ def generate_drafts(req: GenerateRequest) -> GenerateResponse:
             queued=False,
             count=count,
             detail="budget_exceeded",
+            budget_exceeded=True,
+        )
+
+    # Триал: value-fence по числу драфтов (первый достигнутый лимит триала блокирует генерацию).
+    if trial_drafts_hit:
+        return GenerateResponse(
+            tenant_id=req.tenant_id,
+            queued=False,
+            count=count,
+            detail="trial_drafts_exhausted",
             budget_exceeded=True,
         )
 
@@ -207,6 +225,91 @@ def list_adapters() -> dict:
     UI рисует форму источника из JSON-схемы. Метод describe() уже вырезает секрет-поля.
     """
     return {"adapters": REGISTRY.describe()}
+
+
+# ─────────────────────────────────────────── Email (M6.3): welcome, вебхук Resend, отписка
+# Вебхук/отписка приходят снаружи и проксируются web-сервисом на этот internal-эндпоинт (web —
+# единственный внешне доступный сервис). Логика suppression/prefs и верификация подписи — здесь.
+
+
+class WelcomeRequest(BaseModel):
+    user_id: str
+    tenant_id: str
+    email: str
+    locale: str = "en"
+
+
+@router.post("/internal/notify/welcome")
+def notify_welcome(req: WelcomeRequest) -> dict:
+    """Поставить welcome-письмо в очередь после регистрации (best-effort, не блокирует web)."""
+    try:
+        from app.worker.tasks import send_welcome_email
+
+        send_welcome_email.delay(req.user_id, req.tenant_id, req.email, req.locale)
+        return {"queued": True}
+    except Exception as exc:
+        return {"queued": False, "detail": str(exc)}
+
+
+class EmailWebhookRequest(BaseModel):
+    payload: str
+    headers: dict[str, str]
+
+
+@router.post("/internal/email/webhook")
+def email_webhook(req: EmailWebhookRequest) -> dict:
+    """Вебхук Resend (Svix-подпись по сырому телу). bounce/complaint -> suppression."""
+    if not settings.resend_webhook_secret:
+        return {"ok": False, "error": "not_configured"}
+    from svix.webhooks import Webhook, WebhookVerificationError
+
+    try:
+        event = Webhook(settings.resend_webhook_secret).verify(req.payload, req.headers)
+    except WebhookVerificationError:
+        return {"ok": False, "error": "invalid_signature"}
+
+    event_type = event.get("type")
+    data = event.get("data") or {}
+    to = data.get("to")
+    email_addr = to[0] if isinstance(to, list) and to else (to if isinstance(to, str) else None)
+    if event_type in ("email.bounced", "email.complained") and email_addr:
+        reason = "complaint" if event_type == "email.complained" else "bounce"
+        with session_scope() as session:
+            EmailRepository.add_suppression(
+                session,
+                email_norm=email_addr.strip().lower(),
+                reason=reason,
+                source_event_id=event.get("id"),
+            )
+    return {"ok": True}
+
+
+class UnsubscribeRequest(BaseModel):
+    token: str
+
+
+@router.post("/internal/email/unsubscribe")
+def email_unsubscribe(req: UnsubscribeRequest) -> dict:
+    """Отписка от digest по токену (one-click). Идемпотентно."""
+    try:
+        token = uuid.UUID(req.token)
+    except ValueError:
+        return {"ok": False, "error": "invalid_token"}
+    with session_scope() as session:
+        found = EmailRepository.unsubscribe_by_token(session, token)
+    return {"ok": found}
+
+
+def _trial_drafts_exhausted(session, tenant) -> bool:
+    """Достигнут ли лимит драфтов триала. Вне триала (subscription_status!='trialing') — нет."""
+    if tenant is None or tenant.subscription_status != "trialing":
+        return False
+    limit = (
+        tenant.trial_drafts_limit
+        if tenant.trial_drafts_limit is not None
+        else TRIAL_DEFAULT_DRAFTS_LIMIT
+    )
+    return PostRepository.count_posts(session, tenant.id) >= limit
 
 
 def _tenant_timezone(tenant_id: str | None) -> str:

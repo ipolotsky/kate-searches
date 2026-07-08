@@ -31,7 +31,7 @@ def _fake_scope(session):
 
 
 def test_generate_blocks_when_budget_exceeded(monkeypatch):
-    tenant = SimpleNamespace(ai_budget_usd_month=Decimal("10"))
+    tenant = SimpleNamespace(ai_budget_usd_month=Decimal("10"), subscription_status=None)
     monkeypatch.setattr("app.api.routes.session_scope", _fake_scope(_FakeSession(tenant)))
     monkeypatch.setattr("app.api.routes.tenant_month_spend", lambda *a, **k: Decimal("10"))
     monkeypatch.setattr(
@@ -53,7 +53,7 @@ def test_generate_blocks_when_budget_exceeded(monkeypatch):
 
 
 def test_generate_enqueues_when_within_budget(monkeypatch):
-    tenant = SimpleNamespace(ai_budget_usd_month=Decimal("10"))
+    tenant = SimpleNamespace(ai_budget_usd_month=Decimal("10"), subscription_status=None)
     monkeypatch.setattr("app.api.routes.session_scope", _fake_scope(_FakeSession(tenant)))
     monkeypatch.setattr("app.api.routes.tenant_month_spend", lambda *a, **k: Decimal("1"))
     monkeypatch.setattr(
@@ -76,7 +76,7 @@ def test_generate_enqueues_when_within_budget(monkeypatch):
 
 
 def test_generate_no_scored_articles_returns_zero(monkeypatch):
-    tenant = SimpleNamespace(ai_budget_usd_month=Decimal("10"))
+    tenant = SimpleNamespace(ai_budget_usd_month=Decimal("10"), subscription_status=None)
     monkeypatch.setattr("app.api.routes.session_scope", _fake_scope(_FakeSession(tenant)))
     monkeypatch.setattr("app.api.routes.tenant_month_spend", lambda *a, **k: Decimal("1"))
     monkeypatch.setattr(ArticleRepository, "scored_articles", staticmethod(lambda *a, **k: []))

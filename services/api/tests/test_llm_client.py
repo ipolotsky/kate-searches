@@ -2,6 +2,7 @@
 
 import uuid
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -10,7 +11,7 @@ import litellm
 import pytest
 
 from app.llm import client as llm_client
-from app.metering import BudgetExceededError
+from app.metering import BudgetExceededError, TrialExpiredError
 from app.models.scoring import CriterionScore, RelevanceScore
 
 
@@ -154,7 +155,9 @@ def test_structured_completion_blocks_when_budget_exhausted(
     @contextmanager
     def fake_factory():
         yield SimpleNamespace(
-            get=lambda _m, pk: SimpleNamespace(id=pk, ai_budget_usd_month=Decimal("10"))
+            get=lambda _m, pk: SimpleNamespace(
+                id=pk, ai_budget_usd_month=Decimal("10"), subscription_status=None
+            )
         )
 
     called = {"llm": False}
@@ -231,3 +234,64 @@ def test_structured_completion_survives_usage_write_failure(
 
     assert isinstance(result, RelevanceScore)
     assert cost == pytest.approx(0.05)
+
+
+def _trial_factory(tenant):
+    @contextmanager
+    def factory():
+        yield SimpleNamespace(get=lambda _m, _pk: tenant)
+
+    return factory
+
+
+def test_reserve_gates_score_on_trial(monkeypatch: pytest.MonkeyPatch) -> None:
+    # На триале score тоже идёт через ledger с периодом 'trial' (единый trial-cap на COGS).
+    tenant = SimpleNamespace(
+        id=uuid.uuid4(),
+        ai_budget_usd_month=Decimal("3"),
+        subscription_status="trialing",
+        trial_ends_at=datetime.now(UTC) + timedelta(days=3),
+    )
+    captured: dict = {}
+
+    def fake_reserve(session, tenant_id, *, period, estimate, budget) -> bool:
+        captured.update(period=period, budget=budget)
+        return True
+
+    monkeypatch.setattr(llm_client, "reserve_budget", fake_reserve)
+    reservation = llm_client._reserve_budget(
+        tenant_id=str(tenant.id), stage="score", session_factory=_trial_factory(tenant)
+    )
+    assert reservation is not None
+    assert reservation[0] == "trial"
+    assert captured["period"] == "trial"
+
+
+def test_reserve_skips_score_off_trial(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Вне триала score не гейтится (ledger не трогаем, статьи не застревают в extracted).
+    tenant = SimpleNamespace(
+        id=uuid.uuid4(), ai_budget_usd_month=Decimal("10"), subscription_status=None
+    )
+    called = {"reserve": False}
+    monkeypatch.setattr(
+        llm_client, "reserve_budget", lambda *a, **k: called.__setitem__("reserve", True) or True
+    )
+    reservation = llm_client._reserve_budget(
+        tenant_id=str(tenant.id), stage="score", session_factory=_trial_factory(tenant)
+    )
+    assert reservation is None
+    assert called["reserve"] is False
+
+
+def test_reserve_raises_on_expired_trial(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant = SimpleNamespace(
+        id=uuid.uuid4(),
+        ai_budget_usd_month=Decimal("3"),
+        subscription_status="trialing",
+        trial_ends_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    monkeypatch.setattr(llm_client, "reserve_budget", lambda *a, **k: True)
+    with pytest.raises(TrialExpiredError):
+        llm_client._reserve_budget(
+            tenant_id=str(tenant.id), stage="draft", session_factory=_trial_factory(tenant)
+        )

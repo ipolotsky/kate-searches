@@ -8,6 +8,7 @@ import os
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -18,7 +19,9 @@ from app.db.engine import session_scope
 from app.db.models import Tenant
 from app.db.repositories import insert_ai_usage, reserve_budget, settle_budget
 from app.metering import (
+    TRIAL_PERIOD_KEY,
     BudgetExceededError,
+    TrialExpiredError,
     estimate_for,
     period_key_utc,
     stage_is_hard_capped,
@@ -139,23 +142,33 @@ def _reserve_budget(
 
     None — бюджета нет (не гейтим). Raise BudgetExceededError — бюджет исчерпан. Резерв коммитится
     своей транзакцией, чтобы конкурентные вызовы видели его атомарно (нет TOCTOU-гонки).
+
+    Вне триала гейтим только дорогую стадию draft (дешёвый скоринг/ingestion через ledger не гоним:
+    иначе при добитом бюджете score падал бы в BudgetExceededError и статьи застревали бы в
+    'extracted'). На триале (subscription_status='trialing') гейтим ещё и score — единый trial-cap
+    ($3, период 'trial') ограничивает суммарный COGS триала.
     """
-    # Hard-cap энфорсит только дорогую стадию (draft). Дешёвый скоринг/ingestion через ledger
-    # не гоняем: иначе при добитом бюджете score падал бы в BudgetExceededError и статьи
-    # застревали бы в 'extracted' без пере-скоринга.
-    if not stage_is_hard_capped(stage):
-        return None
     with session_factory() as session:
         tenant = session.get(Tenant, uuid.UUID(str(tenant_id)))
         if tenant is None or tenant.ai_budget_usd_month is None:
             return None
+        trialing = tenant.subscription_status == "trialing"
+        if not (stage_is_hard_capped(stage) or (trialing and stage == "score")):
+            return None
+        # Экспирация триала (окно между trial_end и вебхуком-даунгрейдом): дорогие вызовы не жжём.
+        if (
+            trialing
+            and tenant.trial_ends_at is not None
+            and datetime.now(UTC) > tenant.trial_ends_at
+        ):
+            raise TrialExpiredError(f"trial expired for tenant {tenant_id}")
         budget = tenant.ai_budget_usd_month
-        period = period_key_utc()
+        period = TRIAL_PERIOD_KEY if trialing else period_key_utc()
         estimate = estimate_for(stage)
         if budget <= 0 or not reserve_budget(
             session, tenant.id, period=period, estimate=estimate, budget=budget
         ):
-            raise BudgetExceededError(f"monthly AI budget exhausted for tenant {tenant_id}")
+            raise BudgetExceededError(f"AI budget exhausted for tenant {tenant_id}")
     return period, estimate
 
 

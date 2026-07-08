@@ -10,6 +10,7 @@ from app.config import settings
 
 DISPATCH_INTERVAL_SECONDS = 15 * 60
 REAP_INTERVAL_SECONDS = 5 * 60
+EMAIL_SCAN_INTERVAL_SECONDS = 60 * 60
 
 
 def create_celery() -> Celery:
@@ -42,6 +43,11 @@ def create_celery() -> Celery:
             "finalize_generation": {"queue": "default"},
             "dispatch_due_tenants": {"queue": "default"},
             "reap_stale_claims": {"queue": "default"},
+            "scan_email_notifications": {"queue": "default"},
+            "send_digest_email": {"queue": "emails"},
+            "send_welcome_email": {"queue": "emails"},
+            "send_trial_ending_email": {"queue": "emails"},
+            "send_budget_threshold_email": {"queue": "emails"},
         },
         beat_schedule={
             "dispatch-due-tenants": {
@@ -51,6 +57,10 @@ def create_celery() -> Celery:
             "reap-stale-claims": {
                 "task": "reap_stale_claims",
                 "schedule": float(REAP_INTERVAL_SECONDS),
+            },
+            "scan-email-notifications": {
+                "task": "scan_email_notifications",
+                "schedule": float(EMAIL_SCAN_INTERVAL_SECONDS),
             },
         },
     )
