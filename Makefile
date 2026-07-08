@@ -1,4 +1,4 @@
-.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate db-types install seed-admin
+.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate db-types install seed-admin seed-looton
 
 up:            ## поднять локальную инфру (Supabase CLI + Redis)
 	supabase start
@@ -52,3 +52,7 @@ seed-admin:    ## выдать платформенного (супер) адм�
 	psql "$(or $(DB),postgresql://postgres:postgres@localhost:54322/postgres)" \
 		-c "insert into platform_admins (user_id) select id from users where email = '$(EMAIL)' on conflict do nothing;"
 	@echo "platform_admins <- $(EMAIL)"
+
+seed-looton:   ## залить пилот LOOTON, идемпотентно. Локально: make seed-looton. Прод: make seed-looton DB=<url> ARGS="--owner-email kate@..."
+	cd services/api && DATABASE_URL="$(or $(DB),postgresql://postgres:postgres@localhost:54322/postgres)" \
+		. .venv/bin/activate && python scripts/seed_looton.py $(or $(ARGS),--create)

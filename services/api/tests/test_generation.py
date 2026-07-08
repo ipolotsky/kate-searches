@@ -70,6 +70,8 @@ def test_build_messages_includes_company_voice_and_language() -> None:
     )
     profile = {
         "company_name": "LOOTON",
+        "company_description": "ресейл премиум-одежды",
+        "audience_description": "коллекционеры и сникерхеды",
         "voice_config": {"tone": "expert"},
         "voice_examples": [],
         "unique_angle_hint": "ресейл/архив",
@@ -77,13 +79,30 @@ def test_build_messages_includes_company_voice_and_language() -> None:
     messages = generation.build_messages(doc, _relevance(), profile, "ru")
     system = messages[0]["content"]
     assert "LOOTON" in system
+    assert "ресейл премиум-одежды" in system  # company_description
+    assert "коллекционеры и сникерхеды" in system  # audience_description
     assert "ресейл/архив" in system
-    assert "expert" in system
+    assert "Голос и тон: expert" in system  # tone читаемым текстом, не repr словаря
+    assert "{'tone'" not in system  # voice_config не утекает как Python-dict
     assert "Язык черновика: ru" in system
     user = messages[1]["content"]
     assert "неизвестна" in user  # published_at None -> guard, без краша
     assert "архивный дроп" in user  # trend_explanation
     assert "берём: сильный ресейл-сигнал" in user  # decision_summary
+
+
+def test_voice_config_angle_not_duplicated() -> None:
+    doc = SimpleNamespace(title="t", body="b", url="https://n.test/x", published_at=None)
+    profile = {
+        "company_name": "LOOTON",
+        "voice_config": {"tone": "дружелюбно", "unique_angle_hint": "ресейл-угол"},
+        "voice_examples": [],
+        "unique_angle_hint": "ресейл-угол",
+    }
+    system = generation.build_messages(doc, _relevance(), profile, "ru")[0]["content"]
+    assert "дружелюбно" in system
+    # unique_angle_hint не задвоился — только в {unique_angle}
+    assert system.count("ресейл-угол") == 1
 
 
 def test_format_examples_caps_three_and_reads_dicts() -> None:
@@ -103,6 +122,18 @@ def test_format_examples_caps_three_and_reads_dicts() -> None:
 
 def test_format_examples_empty_is_neutral() -> None:
     assert "Примеров пока нет" in generation._format_examples([])
+
+
+def test_format_examples_shows_source_url_infopovod() -> None:
+    examples = [
+        {"post_text": "текст поста", "source_url": "https://src.test/a", "why": "хорош"},
+        {"post_text": "без источника"},
+    ]
+    formatted = generation._format_examples(examples)
+    assert "Инфоповод: https://src.test/a" in formatted  # source_url в промпте
+    assert "Пост: текст поста" in formatted
+    assert "Пост: без источника" in formatted
+    assert formatted.count("Инфоповод:") == 1  # у второго примера url пустой -> строки нет
 
 
 def _article(status: str = "scored") -> SimpleNamespace:
@@ -168,7 +199,13 @@ def _wire(
 
 def test_generate_draft_run_happy_path_persists_post(monkeypatch: pytest.MonkeyPatch) -> None:
     article = _article()
-    profile_row = SimpleNamespace(voice_config={}, voice_examples=[], locales=["en"])
+    profile_row = SimpleNamespace(
+        company_description="c",
+        audience_description="a",
+        voice_config={},
+        voice_examples=[],
+        locales=["en"],
+    )
     captured: dict = {}
     called: dict = {}
     factory = _wire(
@@ -189,7 +226,13 @@ def test_generate_draft_run_concurrent_loser_skips_before_llm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     article = _article()
-    profile_row = SimpleNamespace(voice_config={}, voice_examples=[], locales=["en"])
+    profile_row = SimpleNamespace(
+        company_description="c",
+        audience_description="a",
+        voice_config={},
+        voice_examples=[],
+        locales=["en"],
+    )
     captured: dict = {}
     called: dict = {}
     factory = _wire(
@@ -213,7 +256,13 @@ def test_generate_draft_run_releases_claim_on_llm_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     article = _article()
-    profile_row = SimpleNamespace(voice_config={}, voice_examples=[], locales=["en"])
+    profile_row = SimpleNamespace(
+        company_description="c",
+        audience_description="a",
+        voice_config={},
+        voice_examples=[],
+        locales=["en"],
+    )
     captured: dict = {}
     called: dict = {}
     factory = _wire(

@@ -344,6 +344,53 @@ RUN_DB_TESTS=1 pytest -q -m integration                       # 19 integration (
 
 Дальше - M6 (пилот LOOTON) и роадмап (автопубликация в CMS, соцсети, Stripe-биллинг фазы 1.5).
 
-## Ждём от Kate
+## M6 — пилот LOOTON: входные данные и сухой прогон
 
-Примеры её реальных статей с указанием инфоповода-источника - few-shot для брендового голоса (стадия генерации).
+Получены материалы от Kate: доки «Источники для парсера новостей LOOTON» и «Критерии отбора», плюс таблица voice-examples «инфоповод → статья». Прогнан сухой прогон пайплайна на реальных источниках (скрипты в scratchpad: `probe_feeds.py`, `probe_extract.py`, `probe_score.py`; исходящая сеть в среде есть).
+
+### Скоринг: критерии Kate ложатся на нашу модель 1:1
+Док «Критерии отбора» = `RelevanceScore` без изменений кода: 11 критериев (news/resale/commercial/trend + trend_explanation, seo/aeo/content/content_cluster/knowledge_gap/unique_angle) + `publication_priority` HOT/WARM/COLD/DROP + overall_score 0-100 + passes_threshold + decision_summary. `SYSTEM_TEMPLATE` в `scoring.py` уже несёт LOOTON-рамку («главный редактор... инфоповоды, после которых захочется найти/купить/продать/переоценить»). Бренд-профиль LOOTON (company/audience/filter_criteria/веса) настраивается из этого дока.
+
+### Сухой прогон на реальных данных
+- **Ingest (RSS-адаптер) работает** — 11/19 кандидатов живые/свежие (<3ч), багов на реальных фидах нет.
+- **Extract работает** — httpx+trafilatura чисто тянет полный текст WWD (4171), GQ (3391), Vogue (13559), Glossy (5055); full-body-RSS источники гидратации не требуют. Fashionista антиботит статью (403), но тело есть в RSS.
+- **Скоринг работает** — на реальных статьях валидный RelevanceScore с in-brand reasoning.
+- **Вскрыто (задача калибровки M6): скоринг слишком «добрый».** Все 4 пробных статьи → overall 74-90, priority HOT/WARM, никто не COLD/DROP; маркетинг-история про running-бренд (Glossy, 90/HOT) обогнала sneaker-релиз (78). Правится: ужесточить filter_criteria, поднять/настроить score_threshold, добавить веса против не-ресейл тем + фидбэк Kate. **Оговорка:** прогон шёл на `gpt-5-mini`, т.к. gemini free-tier исчерпал квоту (429); сильная reasoning-модель дорисовывает угол ко всему → щедрее. Калибровать надо на продакшен-модели (`gemini-2.0-flash-lite`). Побочно: при переключении скоринга на reasoning-модель нужен `max_tokens` выше 2048 (иначе `IncompleteOutputException`).
+
+### Валидированные источники (11 рабочих RSS для старта пилота)
+Full-body RSS (extract не нужен): Hypebeast `https://hypebeast.com/feed`, Highsnobiety `https://www.highsnobiety.com/feed/`, Sneaker News `https://sneakernews.com/feed/`, Fashionista `https://fashionista.com/feed`, Glossy `https://www.glossy.co/feed/`, The Industry Fashion `https://www.theindustry.fashion/feed/`.
+Через httpx-гидратацию: WWD `https://wwd.com/feed/`, GQ `https://www.gq.com/feed/rss`, Vogue `https://www.vogue.com/feed/rss`, Nice Kicks `https://www.nicekicks.com/feed/`, Business of Fashion `https://www.businessoffashion.com/feed/` (пейволл — только тизер).
+Не отдали RSS (нужен news-sitemap/скрапер или фаза 2): Complex, Vogue Business, ресейл-маркетплейсы (StockX/RealReal/Grailed/Depop). Соцсети/SEO-тулы (доки §5-9) — вне MVP.
+
+### Voice-examples от Kate — ПОЛУЧЕНЫ чистым файлом (блокер снят)
+Ранее CSV пришёл в mojibake (UTF-8 как cp1252, ~половина кириллицы билась в `�`) — тексты было не восстановить. **Владелец приложил чистый PDF «примеры инфоповодов»**: таблица `Тип инфоповода | URL | Почему/угол LOOTON | Текст LOOTON`, ~8 заполненных постов + ~8 плановых типов, кириллица читается. Тексты перенесены в `services/api/scripts/looton_seed.json` в формат `{post_text, source_url, why}` (генерация берёт первые 3 через `_format_examples[:3]`). Блокер стадии генерации снят.
+
+Заполненные примеры (URL + тип; тексты — ждём чистый файл):
+1. Смена креативного директора — Salomon (Хейкки Салонен): `https://hypebeast.com/2026/1/heikki-salonen-salomon-creative-director-interview-info`
+2. Новый показ — Prada SS27 menswear: `https://www.vogue.com/fashion-shows/spring-2027-menswear/prada`
+3. Новый тренд сезона (вьетнамки/flip-flops): `https://www.vogue.co.uk/article/how-to-style-flip-flops`
+4. Коллаборация (архивная модель) — CDG HOMME × New Balance 1226: `https://hypebeast.com/2026/6/comme-des-garcons-homme-new-balance-1226-new-silhouette-collaboration-paris-fashion-week-ss27-exclusive-first-look`
+5. Релиз кроссовок — Nike Air Foamposite «Glow»: `https://hypebeast.com/2026/6/nike-air-foamposite-pro-prm-glow-in-the-dark-iv6246-100-release-info`
+6. Релиз по мотивам фильма (поп-культура) — Nike AF1 «Ghostface»: `https://hypebeast.com/2026/7/nike-air-force-1-low-ghostface-summit-white-metallic-silver-black-gym-red-metallic-cool-grey-iv6350-121-official-images`
+7. Запуск саб-бренда/линейки — Off-White L/AB: `https://hypebeast.com/2026/6/off-white-lab-co-label-launch-collection-release-info`
+8. Изменение правил маркетплейса — Depop (комиссия): `https://www.news.com.au/lifestyle/fashion/fashion-trends/too-little-too-latefashion-platform-announces-huge-shakeup/news-story/3e2ca6fc561ff147d9123d0517a53fec`
+9. Возвращение силуэта — skinny jeans: `https://www.g-star.com/en_fr/stories/denim/skinny-jeans-are-back`
+10. Запуск новой категории — Off-White «TIME» (часы): без URL
+
+Плановые типы (угол намечен, текст будет): юбилей культовой модели; фильм/сериал сделал вещь популярной; смерть/юбилей дизайнера; новая коллекция люкс-бренда; архивная выставка бренда; резкий рост цены культовой вещи; вирусный TikTok-тренд; тренд снимает модель с производства.
+
+### Реализация M6 (сид + правки промптов) — сделано
+Инженерная часть пилота, что можно построить без ключей владельца:
+- **Идемпотентный сид LOOTON.** `services/api/scripts/looton_seed.json` (данные бренда как данные: тенант ru/Europe-Moscow, `company_description`/`audience_description`, жёсткий `filter_criteria` «берём/дропаем», `criteria_weights` с перекосом на resale/commercial/unique_angle, `score_threshold=75` (стартовое, финал за Kate), `voice_config{tone, unique_angle_hint}`, `locales=['ru']`, 9 voice_examples из PDF, 11 RSS-источников с priority/category). `services/api/scripts/seed_looton.py` — upsert под `session_scope` (bypassrls). Таргетинг тенанта детерминированный (имя — свободный текст, по нему молча не матчим): прод — `--owner-email` (резолв по владельцу) или `--tenant-id`; чистая БД — `--create`; без флагов и без существующего тенанта — падает (fail loud), orphan не плодит. По умолчанию create-only: существующие профиль/источники не трогаются (калибровка оператора в UI сохраняется), `--force` перезаписывает из JSON. Локально `make seed-looton`; прод `make seed-looton DB=<url> ARGS="--owner-email kate@..."`.
+- **Промпт генерации доработан** (`pipeline/generation.py`): в system добавлены `company_description` + `audience` (раньше шли только в скоринг), few-shot теперь показывает модели `source_url` инфоповода рядом с текстом (связка «инфоповод → пост»). `docs/05` §4 синхронизирован (schema `language`/`meta_description=200`, шаблон).
+- **Скоринг против завышения** (`pipeline/scoring.py`): в `SYSTEM_TEMPLATE` добавлена генерическая (тенант-агностичная) рамка строгости — не завышать, `high` только при явном сигнале, HOT только на прямое попадание в критерии, иначе DROP. LOOTON-специфика — данными (жёсткий `filter_criteria` + веса + порог 75).
+- **Тесты.** `test_seed_looton.py` (структура JSON, формат voice_examples, отсутствие mojibake, 11 источников, совпадение ключей `criteria_weights` с критериями `RelevanceScore`, идемпотентность upsert на fake-сессии: fail-loud/create-only/force/owner-email), обновлён `test_generation.py` (company_description/audience/source_url + чистый рендер voice_config без дублей).
+- **Порядок запуска пилота:** Kate регистрирует тенант LOOTON в web (создаст owner-логин), затем `make seed-looton DB=<prod> ARGS="--owner-email kate@..."` дозаполняет профиль/источники по владельцу. Направление шкалы `sources.priority` принято higher=trusted (сверить с конвенцией доков Kate).
+- **Adversarial-ревью (3 линзы + верификация каждой находки).** 5 находок подтверждено и починено: (1) HIGH — сид матчил тенант по свободному имени → чинено детерминированным таргетингом по owner-email/tenant-id + fail-loud; (2) LOW — повтор затирал калибровку оператора → create-only по умолчанию, overwrite только под `--force`; (3) MEDIUM — `voice_config` уходил в промпт как Python-repr + дубль `unique_angle_hint` → рендер только tone; (4,5) LOW — добавлены тесты весов и идемпотентности. Все сценарии перепроверены в изолированном docker.
+
+### Что нужно, чтобы запустить пилот
+1. ~~Чистый перезалив voice-examples~~ — **сделано** (PDF → `looton_seed.json`).
+2. **Платный tier gemini** (или сменить скоринг-модель) — free-tier умирает после нескольких вызовов (429).
+3. **Hosted Supabase + деплой** — ключи владельца; после деплоя прогнать `make seed-looton DB=<prod_url>`.
+4. **Решение Kate:** финальные `score_threshold`/приоритет (только HOT или HOT+WARM), веса критериев (стартовые значения — в `looton_seed.json`, правятся в UI настроек).
+5. Калибровка скоринга на реальном потоке (первая неделя, на продакшен-модели `gemini-2.0-flash-lite`).

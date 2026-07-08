@@ -18,9 +18,12 @@ from app.llm.client import SessionFactory, structured_completion_with_usage
 from app.models import DraftPost, RelevanceScore
 
 SYSTEM_TEMPLATE = """Ты пишешь черновик статьи/поста для бренда {company} в его фирменном голосе.
+{company_description}
+Аудитория бренда: {audience}.
 
 Голос и тон: {voice_config}
-Следуй стилю этих реальных постов бренда (few-shot):
+Следуй стилю этих реальных постов бренда (few-shot). У каждого примера указан инфоповод-источник,
+из которого он родился — учись связке «инфоповод → пост»:
 {voice_examples}
 
 Задача: на основе новости написать материал-симбиоз «инфоповод × бренд».
@@ -58,7 +61,9 @@ def build_messages(
 ) -> list[dict]:
     system = SYSTEM_TEMPLATE.format(
         company=profile.get("company_name", ""),
-        voice_config=profile.get("voice_config", {}),
+        company_description=profile.get("company_description", ""),
+        audience=profile.get("audience_description", ""),
+        voice_config=_format_voice_config(profile.get("voice_config", {})),
         voice_examples=_format_examples(profile.get("voice_examples", [])),
         unique_angle=profile.get("unique_angle_hint", "ресейл/архив/винтаж/редкость/стоимость"),
         language=language,
@@ -127,6 +132,8 @@ def generate_draft_run(
         voice_config = profile_row.voice_config or {}
         profile: dict = {
             "company_name": tenant.name if tenant is not None else "",
+            "company_description": profile_row.company_description or "",
+            "audience_description": profile_row.audience_description or "",
             "voice_config": voice_config,
             "voice_examples": profile_row.voice_examples or [],
         }
@@ -192,19 +199,34 @@ def _pick_language(profile_row, tenant, article) -> str:
     return "en"
 
 
+def _format_voice_config(voice_config: object) -> str:
+    """Рендерит голос/тон читаемым текстом (не Python-repr словаря). unique_angle_hint исключён —
+    он подставляется отдельно в {unique_angle}, иначе задвоился бы в промпте."""
+    if not isinstance(voice_config, dict):
+        return str(voice_config or "")
+    parts = [
+        str(value) for key, value in voice_config.items() if key != "unique_angle_hint" and value
+    ]
+    return " ".join(parts)
+
+
 def _format_examples(examples: list) -> str:
-    """Форматирует few-shot голоса бренда, кап 2-3 лучших (спека §4.2), без разбухания промпта."""
+    """Форматирует few-shot голоса бренда, кап 3 (спека §4.2). Показывает инфоповод-источник."""
     if not examples:
         return "Примеров пока нет — следуй голосу и тону выше."
-    lines: list[str] = []
+    blocks: list[str] = []
     for example in examples[:3]:
-        if isinstance(example, dict):
-            text = example.get("post_text") or example.get("text") or ""
-            entry = f"- {text}"
-            why = example.get("why")
-            if why:
-                entry += f"\n  (почему хорош: {why})"
-        else:
-            entry = f"- {example}"
-        lines.append(entry)
-    return "\n".join(lines)
+        if not isinstance(example, dict):
+            blocks.append(f"Пост: {example}")
+            continue
+        lines: list[str] = []
+        source_url = example.get("source_url")
+        if source_url:
+            lines.append(f"Инфоповод: {source_url}")
+        text = example.get("post_text") or example.get("text") or ""
+        lines.append(f"Пост: {text}")
+        why = example.get("why")
+        if why:
+            lines.append(f"(почему хорош: {why})")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)

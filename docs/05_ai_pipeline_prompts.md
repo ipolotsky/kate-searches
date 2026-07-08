@@ -114,9 +114,10 @@ class FAQItem(BaseModel):
     answer: str = Field(description="прямой ответ 40-60 слов")
 
 class DraftPost(BaseModel):
+    language: str
     title: str
     suggested_titles: list[str] = Field(min_length=3)
-    meta_description: str = Field(max_length=160)
+    meta_description: str = Field(max_length=200)
     body_markdown: str = Field(description="answer-first, H2/H3, короткие абзацы, списки")
     faq: list[FAQItem] = Field(description="реальные Q&A как спрашивают пользователи")
     keywords: list[str]
@@ -131,10 +132,13 @@ class DraftPost(BaseModel):
 ```
 SYSTEM:
 Ты пишешь черновик статьи/поста для бренда {company_name} в его фирменном голосе.
+{company_description}
+Аудитория бренда: {audience_description}.
 
 Голос и тон: {voice_config}
-Речевые обороты и стиль — следуй этим примерам реальных постов бренда:
-{voice_examples}        # few-shot: [{post_text, source_url, why}] — 2-3 лучших
+Речевые обороты и стиль — следуй этим примерам реальных постов бренда. У каждого примера
+указан инфоповод-источник, из которого он родился — учись связке «инфоповод → пост»:
+{voice_examples}        # few-shot: [{post_text, source_url, why}] — 2-3 лучших, source_url в промпт
 
 Задача: на основе новости написать материал-симбиоз «инфоповод × бренд».
 Это НЕ пересказ новости. Органично вплети инфоповод в бренд — его позиционирование,
