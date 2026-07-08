@@ -9,6 +9,7 @@ from celery import Celery
 from app.config import settings
 
 DISPATCH_INTERVAL_SECONDS = 15 * 60
+REAP_INTERVAL_SECONDS = 5 * 60
 
 
 def create_celery() -> Celery:
@@ -40,12 +41,17 @@ def create_celery() -> Celery:
             "finalize_run": {"queue": "default"},
             "finalize_generation": {"queue": "default"},
             "dispatch_due_tenants": {"queue": "default"},
+            "reap_stale_claims": {"queue": "default"},
         },
         beat_schedule={
             "dispatch-due-tenants": {
                 "task": "dispatch_due_tenants",
                 "schedule": float(DISPATCH_INTERVAL_SECONDS),
-            }
+            },
+            "reap-stale-claims": {
+                "task": "reap_stale_claims",
+                "schedule": float(REAP_INTERVAL_SECONDS),
+            },
         },
     )
     return app

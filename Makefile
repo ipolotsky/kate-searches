@@ -39,9 +39,9 @@ db-reset:      ## применить миграции к локальному Su
 	supabase db reset
 
 db-migrate:    ## применить миграции к БД из DATABASE_URL (hosted Supabase)
-	@for f in supabase/migrations/*.sql; do \
+	@set -e; for f in supabase/migrations/*.sql; do \
 		echo "applying $$f"; \
-		psql "$$DATABASE_URL" -f $$f; \
+		psql "$$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -f $$f; \
 	done
 
 db-types:      ## регенерировать типы Supabase для web (после изменения схемы)

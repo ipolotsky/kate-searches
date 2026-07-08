@@ -1,6 +1,7 @@
 """Юнит-скоринг: build_messages (веса/критерии) + решающая логика порога (без сети/БД)."""
 
 import uuid
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -59,6 +60,11 @@ class _FakeSession:
         return SimpleNamespace(name="LOOTON")
 
 
+@contextmanager
+def _fake_scope():
+    yield _FakeSession()
+
+
 @pytest.mark.parametrize(
     ("overall", "passes", "threshold", "expected_status", "expected_passed"),
     [
@@ -101,22 +107,60 @@ def test_gate_decision(
     monkeypatch.setattr(
         scoring.BrandProfileRepository, "get_by_tenant", staticmethod(lambda s, tid: profile_row)
     )
+    monkeypatch.setattr(
+        scoring.ArticleRepository, "claim_for_scoring", staticmethod(lambda s, aid: True)
+    )
     monkeypatch.setattr(scoring.ArticleRepository, "advance_scored", staticmethod(fake_advance))
     monkeypatch.setattr(
         scoring, "score_article", lambda *a, **k: _relevance(overall=overall, passes=passes)
     )
 
-    result = scoring.score_article_run(_FakeSession(), article.id, uuid.uuid4())
+    result = scoring.score_article_run(article.id, uuid.uuid4(), session_factory=_fake_scope)
 
     assert result["status"] == expected_status
     assert captured["passed"] is expected_passed
     assert captured["relevance_score"] == overall
 
 
+def test_score_article_run_skips_already_claimed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Проигравший конкурентный воркер: claim не удался -> в LLM не идём."""
+    article = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        status="extracted",
+        title="t",
+        body="b",
+        url="u",
+        published_at=None,
+    )
+    profile_row = SimpleNamespace(
+        company_description="c",
+        audience_description="a",
+        filter_criteria="f",
+        criteria_weights={},
+        score_threshold=60,
+    )
+    called = {"llm": False}
+    monkeypatch.setattr(scoring.ArticleRepository, "get", staticmethod(lambda s, aid: article))
+    monkeypatch.setattr(
+        scoring.BrandProfileRepository, "get_by_tenant", staticmethod(lambda s, tid: profile_row)
+    )
+    monkeypatch.setattr(
+        scoring.ArticleRepository, "claim_for_scoring", staticmethod(lambda s, aid: False)
+    )
+    monkeypatch.setattr(scoring, "score_article", lambda *a, **k: called.__setitem__("llm", True))
+
+    result = scoring.score_article_run(article.id, uuid.uuid4(), session_factory=_fake_scope)
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "already_claimed"
+    assert called["llm"] is False
+
+
 def test_score_article_run_skips_non_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
     article = SimpleNamespace(id=uuid.uuid4(), status="scored")
     monkeypatch.setattr(scoring.ArticleRepository, "get", staticmethod(lambda s, aid: article))
-    result = scoring.score_article_run(_FakeSession(), article.id, uuid.uuid4())
+    result = scoring.score_article_run(article.id, uuid.uuid4(), session_factory=_fake_scope)
     assert result["status"] == "skipped"
 
 
@@ -126,6 +170,6 @@ def test_score_article_run_skips_without_brand_profile(monkeypatch: pytest.Monke
     monkeypatch.setattr(
         scoring.BrandProfileRepository, "get_by_tenant", staticmethod(lambda s, tid: None)
     )
-    result = scoring.score_article_run(_FakeSession(), article.id, uuid.uuid4())
+    result = scoring.score_article_run(article.id, uuid.uuid4(), session_factory=_fake_scope)
     assert result["status"] == "skipped"
     assert result["reason"] == "no_brand_profile"

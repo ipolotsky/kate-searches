@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     firecrawl_cost_per_call_usd: float = 0.002
     ingestion_guards_enabled: bool = True
     pipeline_run_stale_minutes: int = 30
+    # Порог reaper для статей, застрявших в claim-статусе 'scoring'/'drafting' (краш воркера
+    # между claim и разрешением статуса). Должен быть заведомо больше времени вызова сильной
+    # модели (draft ~20-60с), иначе reaper освободит живой claim и статья перегенерится.
+    claim_stale_minutes: int = 30
 
 
 settings = Settings()

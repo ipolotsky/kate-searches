@@ -16,15 +16,19 @@ _MISS = "\x00miss"
 def _download_robots(host_root: str, timeout: float) -> tuple[int, str]:
     import httpx
 
+    from app.fetch.guard import BlockedUrlError, safe_get
+
+    # robots.txt тоже качаем через egress-guard: host_root приходит из tenant-controlled URL
+    # источника, а сырой httpx.get(follow_redirects=True) бил бы во внутреннюю сеть (169.254.*,
+    # localhost) ещё ДО основного, уже защищённого, фетча. safe_get проверяет каждый хоп.
     try:
-        response = httpx.get(
+        response = safe_get(
             f"{host_root}/robots.txt",
             headers={"User-Agent": settings.user_agent},
             timeout=timeout,
-            follow_redirects=True,
         )
         return response.status_code, response.text
-    except httpx.HTTPError:
+    except (BlockedUrlError, httpx.HTTPError):
         return 0, ""
 
 

@@ -1,5 +1,9 @@
+from contextlib import contextmanager
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
+import app.main as main_mod
 from app.main import app
 
 client = TestClient(app)
@@ -12,10 +16,50 @@ class _FakeParsed:
         self.bozo = bozo
 
 
+class _FakeResponse:
+    def __init__(self, status_code, content, headers):
+        self.status_code = status_code
+        self.content = content
+        self.headers = headers
+
+
 def test_health_ok():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+
+
+def test_ready_ok_when_dependencies_up(monkeypatch):
+    @contextmanager
+    def fake_connect():
+        yield SimpleNamespace(execute=lambda *a, **k: None)
+
+    import redis
+
+    monkeypatch.setattr(main_mod.engine, "connect", fake_connect)
+    monkeypatch.setattr(
+        redis.Redis, "from_url", staticmethod(lambda *a, **k: SimpleNamespace(ping=lambda: True))
+    )
+    r = client.get("/ready")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["checks"]["database"] == "ok"
+    assert body["checks"]["redis"] == "ok"
+
+
+def test_ready_503_when_database_down(monkeypatch):
+    def boom():
+        raise RuntimeError("db down")
+
+    import redis
+
+    monkeypatch.setattr(main_mod.engine, "connect", boom)
+    monkeypatch.setattr(
+        redis.Redis, "from_url", staticmethod(lambda *a, **k: SimpleNamespace(ping=lambda: True))
+    )
+    r = client.get("/ready")
+    assert r.status_code == 503
+    assert r.json()["checks"]["database"] == "down"
 
 
 def test_source_test_endpoint_dry_run_rss(monkeypatch):
@@ -28,10 +72,11 @@ def test_source_test_endpoint_dry_run_rss(monkeypatch):
             "published_parsed": (2026, 7, 4, 10, 0, 0, 0, 0, 0),
         }
     ]
+    monkeypatch.setattr("app.adapters.rss.feedparser.parse", lambda content: _FakeParsed(entries))
     monkeypatch.setattr(
-        "app.adapters.rss.feedparser.parse", lambda url, etag=None: _FakeParsed(entries)
+        "app.adapters.rss.safe_get",
+        lambda url, *, headers, timeout: _FakeResponse(200, b"<rss/>", {}),
     )
-    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
     r = client.post("/internal/sources/test", json={"type": "rss", "url": "https://news.test/feed"})
     body = r.json()
     assert r.status_code == 200

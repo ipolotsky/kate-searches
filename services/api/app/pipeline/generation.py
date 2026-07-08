@@ -167,25 +167,41 @@ def generate_draft_run(
             ArticleRepository.release_draft_claim(session, article_uuid)
         raise
 
+    # LLM уже оплачен: персист черновика идёт с ретраем транзиентного сбоя БД. Если персист так
+    # и не удался — освобождаем claim (drafting -> scored), чтобы статья не осталась в 'drafting'
+    # навсегда (иначе: деньги списаны, поста нет, генерация не перевыберет 'drafting'). Backstop
+    # на краш воркера в этом окне — reaper reap_stale_drafting.
+    last_error: Exception | None = None
+    for _ in range(3):
+        try:
+            with session_factory() as session:
+                if not ArticleRepository.advance_drafted(session, article_uuid):
+                    return {
+                        "article_id": str(article_uuid),
+                        "status": "skipped",
+                        "reason": "not_claimed",
+                    }
+                post_id = PostRepository.create_from_draft(
+                    session,
+                    tenant_id=uuid.UUID(tenant_id),
+                    article_id=article_uuid,
+                    draft=draft,
+                    language=language,
+                    ai_model=settings.llm_model_draft,
+                    ai_cost_usd=cost,
+                )
+            return {
+                "article_id": str(article_uuid),
+                "status": "drafted",
+                "post_id": str(post_id),
+                "run_id": str(run_id) if run_id is not None else None,
+            }
+        except Exception as exc:
+            last_error = exc
+
     with session_factory() as session:
-        advanced = ArticleRepository.advance_drafted(session, article_uuid)
-        if not advanced:
-            return {"article_id": str(article_uuid), "status": "skipped", "reason": "not_claimed"}
-        post_id = PostRepository.create_from_draft(
-            session,
-            tenant_id=uuid.UUID(tenant_id),
-            article_id=article_uuid,
-            draft=draft,
-            language=language,
-            ai_model=settings.llm_model_draft,
-            ai_cost_usd=cost,
-        )
-    return {
-        "article_id": str(article_uuid),
-        "status": "drafted",
-        "post_id": str(post_id),
-        "run_id": str(run_id) if run_id is not None else None,
-    }
+        ArticleRepository.release_draft_claim(session, article_uuid)
+    raise last_error
 
 
 def _pick_language(profile_row, tenant, article) -> str:

@@ -37,6 +37,15 @@ def test_allows_public_target(monkeypatch) -> None:
     assert_public_url("https://example.com/feed")
 
 
+def test_resolve_public_pins_first_public_ip(monkeypatch) -> None:
+    from app.fetch.guard import _resolve_public
+
+    monkeypatch.setattr("app.fetch.guard.socket.getaddrinfo", _resolve_to("8.8.8.8"))
+    host, ip = _resolve_public("https://example.com/feed")
+    assert host == "example.com"
+    assert ip == "8.8.8.8"  # коннект пойдёт на этот IP, не резолвим повторно
+
+
 def test_blocks_on_dns_failure(monkeypatch) -> None:
     def boom(*args, **kwargs):
         raise OSError("nxdomain")

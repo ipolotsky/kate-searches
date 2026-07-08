@@ -42,6 +42,16 @@ class Crawl4aiFetcher:
             )
 
         try:
-            return asyncio.run(_run())
+            page = asyncio.run(_run())
         except Exception as exc:
             return FetchedPage(final_url=url, fetcher=self.name, error=str(exc))
+
+        # Headless-браузер сам следует редиректам и резолвит DNS — guard внутрь не протолкнуть.
+        # Пост-проверка: если финальный URL резолвится в непубличный адрес (редирект в приватную
+        # сеть), отбрасываем контент, чтобы не сохранить ответ внутреннего сервиса. Полная защита —
+        # egress-фильтр на сетевом уровне (RFC1918/link-local/loopback), см. docs/08.
+        try:
+            assert_public_url(page.final_url)
+        except BlockedUrlError:
+            return FetchedPage(final_url=page.final_url, fetcher=self.name, error="blocked_url")
+        return page

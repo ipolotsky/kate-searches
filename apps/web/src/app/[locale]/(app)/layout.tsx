@@ -45,16 +45,18 @@ export default async function AppLayout({
     <ToastProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <AppNavbar email={email} tenantName={tenantName} />
-        {level !== "ok" ? (
-          <div className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">
-            <UpsellBanner level={level} percent={percent} locale={locale} suppressOnUsage />
-          </div>
-        ) : null}
-        <div className="mx-auto flex w-full max-w-7xl">
-          <aside className="hidden w-60 shrink-0 border-gray-200 md:block">
+        <div className="flex w-full">
+          <aside className="hidden w-60 shrink-0 md:block">
             <AppSidebar isPlatformAdmin={admin} />
           </aside>
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6">{children}</main>
+          <main className="min-w-0 flex-1 px-6 py-8 lg:px-8">
+            {level !== "ok" ? (
+              <div className="mb-6">
+                <UpsellBanner level={level} percent={percent} locale={locale} suppressOnUsage />
+              </div>
+            ) : null}
+            {children}
+          </main>
         </div>
       </div>
     </ToastProvider>

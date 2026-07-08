@@ -143,6 +143,7 @@ class Article(Base):
     content_hash: Mapped[str | None] = mapped_column(Text)
     simhash: Mapped[int | None] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(Text, server_default=text("'new'"))
+    status_changed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     relevance: Mapped[dict | None] = mapped_column(JSONB)
     relevance_score: Mapped[int | None] = mapped_column(Integer)
     doc_metadata: Mapped[dict] = mapped_column(

@@ -37,6 +37,16 @@ STAGE_COST_ESTIMATE: dict[str, Decimal] = {
 }
 DEFAULT_COST_ESTIMATE = Decimal("0.01")
 
+# Строгий hard-cap ledger'а энфорсит только дорогую стадию генерации; скоринг и ingestion
+# не гейтятся (см. routes.py, generation-only cap). Прогонять дешёвый скоринг через ledger
+# нельзя: при добитом бюджете он падал бы в BudgetExceededError и статьи застревали бы в
+# 'extracted' без пере-скоринга. Триальный режим (M6.2) добавит 'score' сюда для триал-тенантов.
+HARD_CAPPED_STAGES: frozenset[str] = frozenset({"draft"})
+
 
 def estimate_for(stage: str) -> Decimal:
     return STAGE_COST_ESTIMATE.get(stage, DEFAULT_COST_ESTIMATE)
+
+
+def stage_is_hard_capped(stage: str) -> bool:
+    return stage in HARD_CAPPED_STAGES

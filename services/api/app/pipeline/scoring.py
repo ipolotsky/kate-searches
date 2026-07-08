@@ -5,15 +5,15 @@
 """
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy.orm import Session
-
 from app.config import settings
+from app.db.engine import session_scope
 from app.db.models import Tenant
 from app.db.repositories import ArticleRepository, BrandProfileRepository
-from app.llm.client import structured_completion
+from app.llm.client import SessionFactory, structured_completion
 from app.models import RelevanceScore
 
 SYSTEM_TEMPLATE = """Ты — главный редактор и маркетинг-директор бренда {company}.
@@ -47,39 +47,86 @@ class ScorableDocument(Protocol):
     published_at: datetime | None
 
 
-def score_article_run(session: Session, article_id: uuid.UUID, run_id: uuid.UUID) -> dict:
-    """Оценить статью: extracted -> scored|filtered_out, записать relevance/relevance_score.
+@dataclass(frozen=True)
+class _DocSnapshot:
+    """Снимок полей статьи для промпта — отвязан от ORM-сессии (LLM зовём вне транзакции)."""
 
-    Загружает brand_profile тенанта. Идемпотентно: guard по статусу 'extracted'.
+    title: str | None
+    body: str | None
+    url: str
+    published_at: datetime | None
+
+
+def score_article_run(
+    article_id: uuid.UUID | str,
+    run_id: uuid.UUID | str | None,
+    *,
+    session_factory: SessionFactory = session_scope,
+) -> dict:
+    """Оценить статью: extracted -> scoring -> scored|filtered_out, записать relevance/score.
+
+    Идемпотентно и безопасно к конкуренции: атомарный claim extracted -> scoring ДО LLM-вызова
+    (коммитится своей транзакцией), так что конкурентные прогоны одного run_id не скорят статью
+    дважды. При сбое LLM claim откатывается (scoring -> extracted), статья снова доступна.
     Без brand_profile тенанта скоринг пропускается.
     """
-    article = ArticleRepository.get(session, article_id)
-    if article is None or article.status != "extracted":
-        return {"article_id": str(article_id), "status": "skipped"}
+    article_uuid = article_id if isinstance(article_id, uuid.UUID) else uuid.UUID(str(article_id))
 
-    profile_row = BrandProfileRepository.get_by_tenant(session, article.tenant_id)
-    if profile_row is None:
-        return {"article_id": str(article_id), "status": "skipped", "reason": "no_brand_profile"}
+    with session_factory() as session:
+        article = ArticleRepository.get(session, article_uuid)
+        if article is None or article.status != "extracted":
+            return {"article_id": str(article_uuid), "status": "skipped"}
+        profile_row = BrandProfileRepository.get_by_tenant(session, article.tenant_id)
+        if profile_row is None:
+            return {
+                "article_id": str(article_uuid),
+                "status": "skipped",
+                "reason": "no_brand_profile",
+            }
+        tenant = session.get(Tenant, article.tenant_id)
+        profile = {
+            "company_name": tenant.name if tenant is not None else "",
+            "company_description": profile_row.company_description or "",
+            "audience_description": profile_row.audience_description or "",
+            "filter_criteria": profile_row.filter_criteria or "",
+            "criteria_weights": profile_row.criteria_weights or {},
+        }
+        threshold = profile_row.score_threshold
+        doc = _DocSnapshot(
+            title=article.title,
+            body=article.body,
+            url=article.url,
+            published_at=article.published_at,
+        )
+        tenant_id = str(article.tenant_id)
+        # claim последним в tx: проигравший конкурент получит rowcount=0 и не пойдёт в LLM
+        if not ArticleRepository.claim_for_scoring(session, article_uuid):
+            return {
+                "article_id": str(article_uuid),
+                "status": "skipped",
+                "reason": "already_claimed",
+            }
 
-    tenant = session.get(Tenant, article.tenant_id)
-    profile = {
-        "company_name": tenant.name if tenant is not None else "",
-        "company_description": profile_row.company_description or "",
-        "audience_description": profile_row.audience_description or "",
-        "filter_criteria": profile_row.filter_criteria or "",
-        "criteria_weights": profile_row.criteria_weights or {},
-    }
-    score = score_article(article, profile, str(article.tenant_id), pipeline_run_id=run_id)
-    passed = score.passes_threshold and score.overall_score >= profile_row.score_threshold
-    ArticleRepository.advance_scored(
-        session,
-        article_id,
-        relevance=score.model_dump(),
-        relevance_score=score.overall_score,
-        passed=passed,
-    )
+    try:
+        score = score_article(doc, profile, tenant_id, pipeline_run_id=run_id)
+    except Exception:
+        with session_factory() as session:
+            ArticleRepository.release_scoring_claim(session, article_uuid)
+        raise
+
+    passed = score.passes_threshold and score.overall_score >= threshold
+    with session_factory() as session:
+        advanced = ArticleRepository.advance_scored(
+            session,
+            article_uuid,
+            relevance=score.model_dump(),
+            relevance_score=score.overall_score,
+            passed=passed,
+        )
+        if not advanced:
+            return {"article_id": str(article_uuid), "status": "skipped", "reason": "not_claimed"}
     return {
-        "article_id": str(article_id),
+        "article_id": str(article_uuid),
         "status": "scored" if passed else "filtered_out",
         "overall_score": score.overall_score,
     }

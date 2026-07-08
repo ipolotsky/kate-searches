@@ -169,17 +169,65 @@ def test_structured_completion_blocks_when_budget_exhausted(
         "from_litellm",
         lambda _fn: SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions())),
     )
-    # Бюджет исчерпан: reserve отказывает.
+    # Бюджет исчерпан: reserve отказывает. Гейтится только стадия draft (score/ingestion — нет).
     monkeypatch.setattr(llm_client, "reserve_budget", lambda *a, **k: False)
 
     with pytest.raises(BudgetExceededError):
         llm_client.structured_completion(
-            model="gemini/gemini-2.0-flash-lite",
+            model="openai/gpt-5-mini",
             messages=[{"role": "user", "content": "x"}],
             response_model=RelevanceScore,
             tenant_id=str(uuid.uuid4()),
-            stage="score",
+            stage="draft",
             session_factory=fake_factory,
         )
 
     assert called["llm"] is False  # заблокировано ДО обращения к модели
+
+
+def test_structured_completion_survives_usage_write_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Сбой записи ai_usage ПОСЛЕ оплаченного вызова не должен пробрасываться: иначе
+    # generate_draft_run поймает исключение, откатит claim и статья перегенерится (двойной
+    # расход). Ожидаем (result, cost) без исключения.
+    score = _relevance()
+    completion = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5))
+
+    class _FailingSession:
+        def add(self, _row: object) -> None:
+            raise RuntimeError("db down")
+
+        def flush(self) -> None:
+            pass
+
+        # budget=None => draft не гейтится (reserve возвращает None), тест про запись usage.
+        def get(self, _model: object, primary_key: object) -> object:
+            return SimpleNamespace(id=primary_key, ai_budget_usd_month=None)
+
+    @contextmanager
+    def fake_factory():
+        yield _FailingSession()
+
+    class _FakeCompletions:
+        def create_with_completion(self, **_: object):
+            return score, completion
+
+    monkeypatch.setattr(
+        instructor,
+        "from_litellm",
+        lambda _fn: SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions())),
+    )
+    monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.05)
+
+    result, cost = llm_client.structured_completion_with_usage(
+        model="openai/gpt-5-mini",
+        messages=[{"role": "user", "content": "x"}],
+        response_model=RelevanceScore,
+        tenant_id=str(uuid.uuid4()),
+        stage="draft",
+        session_factory=fake_factory,
+    )
+
+    assert isinstance(result, RelevanceScore)
+    assert cost == pytest.approx(0.05)

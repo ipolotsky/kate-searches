@@ -17,7 +17,7 @@ from app.pipeline.scoring import score_article_run
 pytestmark = pytest.mark.integration
 
 
-def _relevance_dict() -> dict:
+def _relevance() -> RelevanceScore:
     criterion = CriterionScore(reasoning="ok", score="high")
     return RelevanceScore(
         news_potential=criterion,
@@ -35,7 +35,11 @@ def _relevance_dict() -> dict:
         publication_priority="HOT",
         passes_threshold=True,
         decision_summary="take",
-    ).model_dump()
+    )
+
+
+def _relevance_dict() -> dict:
+    return _relevance().model_dump()
 
 
 def _tenant(session, budget: Decimal) -> uuid.UUID:
@@ -102,8 +106,13 @@ def test_refund_returns_reservation_on_failure() -> None:
             session.query(Tenant).filter_by(id=tenant_id).delete()
 
 
-def test_scoring_stage_blocked_when_budget_zero_leaves_article_extracted() -> None:
-    # budget=0 => _reserve_budget рейзит BudgetExceededError ДО обращения к модели.
+def test_scoring_stage_not_gated_by_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Скоринг НЕ гейтится бюджетом (hard-cap только на генерации). budget=0 не блокирует score:
+    # статья доходит до scored/filtered_out, а не застревает в extracted. LLM замокан.
+    from app.pipeline import scoring as scoring_mod
+
+    monkeypatch.setattr(scoring_mod, "score_article", lambda *a, **k: _relevance())
+
     with session_scope() as session:
         tenant = Tenant(name=f"cap-{uuid.uuid4().hex[:8]}", ai_budget_usd_month=Decimal("0"))
         session.add(tenant)
@@ -124,11 +133,10 @@ def test_scoring_stage_blocked_when_budget_zero_leaves_article_extracted() -> No
         session.flush()
         article_id = article.id
     try:
+        result = score_article_run(article_id, uuid.uuid4())
+        assert result["status"] == "scored"
         with session_scope() as session:
-            with pytest.raises(BudgetExceededError):
-                score_article_run(session, article_id, uuid.uuid4())
-        with session_scope() as session:
-            assert session.get(Article, article_id).status == "extracted"
+            assert session.get(Article, article_id).status == "scored"
     finally:
         with session_scope() as session:
             session.query(Tenant).filter_by(id=tenant_id).delete()

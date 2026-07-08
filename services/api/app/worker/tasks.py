@@ -206,8 +206,8 @@ def extract_article_run(article_id, run_id) -> dict:
 
 
 def score_article_run(article_id, run_id) -> dict:
-    with session_scope() as session:
-        return _score_article_stage(session, _uuid(article_id), _uuid(run_id))
+    run_uuid = _uuid(run_id) if run_id is not None else None
+    return _score_article_stage(_uuid(article_id), run_uuid)
 
 
 def dedup_and_score_run(tenant_id, run_id, *, fetch_stats: dict | None = None) -> dict:
@@ -458,6 +458,20 @@ def dispatch_due_tenants() -> list:
     for tenant_id, run_id, mode in stale:
         run_tenant_pipeline.delay(tenant_id, run_id, mode, None)
     return dispatched
+
+
+@celery_app.task(name="reap_stale_claims")
+def reap_stale_claims() -> dict:
+    """Освободить статьи, застрявшие в claim-статусе дольше порога (краш воркера между claim и
+    разрешением статуса). 'scoring' -> extracted с пере-постановкой скоринга; 'drafting' -> scored
+    без авто-перегенерации (дорогая стадия — повтор по явному триггеру). Идемпотентно."""
+    cutoff = datetime.now(UTC) - timedelta(minutes=settings.claim_stale_minutes)
+    with session_scope() as session:
+        rescore = ArticleRepository.reap_stale_scoring(session, before=cutoff)
+        drafting_released = ArticleRepository.reap_stale_drafting(session, before=cutoff)
+    for article_id, run_id in rescore:
+        score_article.delay(str(article_id), str(run_id) if run_id is not None else None)
+    return {"rescored": len(rescore), "drafting_released": drafting_released}
 
 
 @celery_app.task(name="run_tenant_pipeline")

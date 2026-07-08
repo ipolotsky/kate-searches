@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 
 import feedparser
+import httpx
 from pydantic import BaseModel
 
 from app.adapters.base import (
@@ -21,7 +22,8 @@ from app.adapters.base import (
 )
 from app.adapters.cursors import ETagCursor
 from app.adapters.registry import AdapterRegistry
-from app.fetch.guard import BlockedUrlError, assert_public_url
+from app.config import settings
+from app.fetch.guard import BlockedUrlError, safe_get
 from app.models import Document
 from app.pipeline.dedup import canonicalize_url, content_hash
 
@@ -52,11 +54,31 @@ class RssAdapter(BaseAdapter):
     def fetch(self, request: FetchRequest) -> FetchResult:
         cursor = ETagCursor.from_state(request.state)
         seen = set(cursor.seen_guids)
+        # Фид качаем сами через egress-guard (safe_get: per-hop проверка + IP-pinning), а не
+        # даём feedparser сходить в сеть — иначе он резолвит DNS и следует редиректам в обход
+        # guard (SSRF). Байты потом парсим локально.
+        headers = {"User-Agent": settings.user_agent}
+        if cursor.etag:
+            headers["If-None-Match"] = cursor.etag
         try:
-            assert_public_url(request.source["url"])
+            response = safe_get(
+                request.source["url"], headers=headers, timeout=settings.fetch_timeout_seconds
+            )
         except BlockedUrlError:
             return FetchResult(items=[], state=cursor.to_state(), warnings=["blocked_url"])
-        parsed = feedparser.parse(request.source["url"], etag=cursor.etag)
+        except httpx.HTTPError:
+            return FetchResult(items=[], state=cursor.to_state(), warnings=["fetch_error"])
+
+        if response.status_code == 304:
+            # ETag не изменился — новых записей нет, сеть не тратим на парсинг.
+            return FetchResult(
+                items=[],
+                state=cursor.to_state(),
+                has_more=False,
+                stats=FetchStats(fetched=0, new=0, skipped=0),
+            )
+
+        parsed = feedparser.parse(response.content)
 
         warnings: list[str] = []
         if getattr(parsed, "bozo", 0) and not parsed.entries:
@@ -77,7 +99,7 @@ class RssAdapter(BaseAdapter):
             if request.limit is not None and len(items) >= request.limit:
                 break
 
-        cursor.etag = getattr(parsed, "etag", cursor.etag)
+        cursor.etag = response.headers.get("etag", cursor.etag)
         stats = FetchStats(fetched=fetched, new=len(items), skipped=fetched - len(items))
         return FetchResult(
             items=items,

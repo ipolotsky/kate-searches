@@ -17,7 +17,12 @@ from app.config import settings
 from app.db.engine import session_scope
 from app.db.models import Tenant
 from app.db.repositories import insert_ai_usage, reserve_budget, settle_budget
-from app.metering import BudgetExceededError, estimate_for, period_key_utc
+from app.metering import (
+    BudgetExceededError,
+    estimate_for,
+    period_key_utc,
+    stage_is_hard_capped,
+)
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 
@@ -94,6 +99,9 @@ def structured_completion_with_usage[T: BaseModel](
         )
         raise
 
+    # Вызов уже оплачен провайдеру. Дальнейший bookkeeping (запись ai_usage, сверка резерва)
+    # строго best-effort: его сбой НЕ должен пробрасываться, иначе generate_draft_run поймает
+    # исключение, откатит claim (drafting -> scored) и статья перегенерится — двойное списание.
     cost = _record_usage(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -104,10 +112,17 @@ def structured_completion_with_usage[T: BaseModel](
         pipeline_run_id=pipeline_run_id,
         session_factory=session_factory,
     )
-    # Сверяем резерв на факт (резерв оставляем, если запись usage упала — консервативно).
-    _settle_reservation(
-        tenant_id=tenant_id, reservation=reservation, cost=cost, session_factory=session_factory
-    )
+    try:
+        # Сверяем резерв на факт (резерв оставляем, если сверка упала — консервативно,
+        # расхождение поправит фоновая реконсиляция леджера).
+        _settle_reservation(
+            tenant_id=tenant_id,
+            reservation=reservation,
+            cost=cost,
+            session_factory=session_factory,
+        )
+    except Exception:
+        pass
     return result, cost
 
 
@@ -125,6 +140,11 @@ def _reserve_budget(
     None — бюджета нет (не гейтим). Raise BudgetExceededError — бюджет исчерпан. Резерв коммитится
     своей транзакцией, чтобы конкурентные вызовы видели его атомарно (нет TOCTOU-гонки).
     """
+    # Hard-cap энфорсит только дорогую стадию (draft). Дешёвый скоринг/ingestion через ledger
+    # не гоняем: иначе при добитом бюджете score падал бы в BudgetExceededError и статьи
+    # застревали бы в 'extracted' без пере-скоринга.
+    if not stage_is_hard_capped(stage):
+        return None
     with session_factory() as session:
         tenant = session.get(Tenant, uuid.UUID(str(tenant_id)))
         if tenant is None or tenant.ai_budget_usd_month is None:
@@ -230,19 +250,24 @@ def _record_usage(
     usage = getattr(completion, "usage", None)
     input_tokens = getattr(usage, "prompt_tokens", None)
     output_tokens = getattr(usage, "completion_tokens", None)
-    with session_factory() as session:
-        insert_ai_usage(
-            session,
-            tenant_id=uuid.UUID(str(tenant_id)),
-            user_id=uuid.UUID(str(user_id)) if user_id is not None else None,
-            stage=stage,
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost,
-            request_id=request_id,
-            pipeline_run_id=(
-                uuid.UUID(str(pipeline_run_id)) if pipeline_run_id is not None else None
-            ),
-        )
+    try:
+        with session_factory() as session:
+            insert_ai_usage(
+                session,
+                tenant_id=uuid.UUID(str(tenant_id)),
+                user_id=uuid.UUID(str(user_id)) if user_id is not None else None,
+                stage=stage,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+                request_id=request_id,
+                pipeline_run_id=(
+                    uuid.UUID(str(pipeline_run_id)) if pipeline_run_id is not None else None
+                ),
+            )
+    except Exception:
+        # ai_usage — зеркало для отчётности/апселла; его сбой не отменяет уже оплаченный
+        # вызов. Возвращаем посчитанную стоимость, чтобы вызывающий сохранил её в posts.
+        pass
     return cost

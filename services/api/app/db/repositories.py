@@ -344,6 +344,30 @@ class ArticleRepository:
         )
 
     @staticmethod
+    def claim_for_scoring(session: Session, article_id: uuid.UUID) -> bool:
+        """Атомарный claim extracted -> scoring ДО LLM-вызова (guard от конкурентного double-spend).
+
+        Симметрично claim_for_draft: ровно один конкурентный воркер получает rowcount=1,
+        проигравший видит status!='extracted' и не идёт в LLM. status_changed_at для reaper.
+        """
+        stmt = (
+            update(Article)
+            .where(Article.id == article_id, Article.status == "extracted")
+            .values(status="scoring", status_changed_at=func.now())
+        )
+        return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
+    def release_scoring_claim(session: Session, article_id: uuid.UUID) -> bool:
+        """Откат scoring -> extracted при сбое скоринга (статья снова доступна для повтора)."""
+        stmt = (
+            update(Article)
+            .where(Article.id == article_id, Article.status == "scoring")
+            .values(status="extracted", status_changed_at=func.now())
+        )
+        return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
     def advance_scored(
         session: Session,
         article_id: uuid.UUID,
@@ -352,10 +376,10 @@ class ArticleRepository:
         relevance_score: int,
         passed: bool,
     ) -> bool:
-        """extracted -> scored|filtered_out (guard WHERE status='extracted', идемпотентно)."""
+        """scoring -> scored|filtered_out (guard WHERE status='scoring', идемпотентно)."""
         stmt = (
             update(Article)
-            .where(Article.id == article_id, Article.status == "extracted")
+            .where(Article.id == article_id, Article.status == "scoring")
             .values(
                 status="scored" if passed else "filtered_out",
                 relevance=relevance,
@@ -369,13 +393,44 @@ class ArticleRepository:
         """Атомарный claim scored -> drafting ДО LLM-вызова (guard от конкурентного double-spend).
 
         Ровно один конкурентный воркер получает rowcount=1; проигравший видит status!='scored'.
+        status_changed_at для reaper застрявших в drafting (краш до advance/release).
         """
         stmt = (
             update(Article)
             .where(Article.id == article_id, Article.status == "scored")
-            .values(status="drafting")
+            .values(status="drafting", status_changed_at=func.now())
         )
         return bool(session.execute(stmt).rowcount)
+
+    @staticmethod
+    def reap_stale_scoring(
+        session: Session, *, before: datetime
+    ) -> list[tuple[uuid.UUID, uuid.UUID | None]]:
+        """Освободить статьи, застрявшие в 'scoring' дольше порога (краш воркера): -> extracted.
+
+        Возвращает (article_id, last_pipeline_run_id) для пере-постановки скоринга в очередь.
+        """
+        rows = session.execute(
+            update(Article)
+            .where(Article.status == "scoring", Article.status_changed_at < before)
+            .values(status="extracted", status_changed_at=func.now())
+            .returning(Article.id, Article.last_pipeline_run_id)
+        ).all()
+        return [(row[0], row[1]) for row in rows]
+
+    @staticmethod
+    def reap_stale_drafting(session: Session, *, before: datetime) -> int:
+        """Освободить статьи, застрявшие в 'drafting' дольше порога (краш/сбой персиста): -> scored.
+
+        Не перезапускаем генерацию автоматически (дорогая стадия): статья снова становится
+        scored-кандидатом, повтор — по явному триггеру генерации.
+        """
+        result = session.execute(
+            update(Article)
+            .where(Article.status == "drafting", Article.status_changed_at < before)
+            .values(status="scored", status_changed_at=func.now())
+        )
+        return int(result.rowcount)
 
     @staticmethod
     def advance_drafted(session: Session, article_id: uuid.UUID) -> bool:

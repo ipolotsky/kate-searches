@@ -22,6 +22,13 @@ class _FakeParsed:
         self.bozo = bozo
 
 
+class _FakeResponse:
+    def __init__(self, status_code, content, headers):
+        self.status_code = status_code
+        self.content = content
+        self.headers = headers
+
+
 def _struct_time(dt: datetime) -> time.struct_time:
     return dt.timetuple()
 
@@ -59,11 +66,11 @@ def test_rss_normalize_dateless_flag() -> None:
 
 def test_rss_fetch_dedups_seen_and_respects_limit(monkeypatch) -> None:
     entries = [{"id": f"g{i}", "link": f"https://x.test/{i}", "title": f"t{i}"} for i in range(5)]
+    monkeypatch.setattr("app.adapters.rss.feedparser.parse", lambda content: _FakeParsed(entries))
     monkeypatch.setattr(
-        "app.adapters.rss.feedparser.parse",
-        lambda url, etag=None: _FakeParsed(entries, etag="etag-1"),
+        "app.adapters.rss.safe_get",
+        lambda url, *, headers, timeout: _FakeResponse(200, b"<rss/>", {"etag": "etag-1"}),
     )
-    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
     adapter = RssAdapter()
     result = adapter.fetch(FetchRequest(source=_SOURCE, state={"seen_guids": ["g0", "g1"]}))
     returned = {item["id"] for item in result.items}
@@ -76,8 +83,11 @@ def test_rss_fetch_dedups_seen_and_respects_limit(monkeypatch) -> None:
 
 
 def test_rss_fetch_empty_feed_warns(monkeypatch) -> None:
-    monkeypatch.setattr("app.adapters.rss.feedparser.parse", lambda url, etag=None: _FakeParsed([]))
-    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
+    monkeypatch.setattr("app.adapters.rss.feedparser.parse", lambda content: _FakeParsed([]))
+    monkeypatch.setattr(
+        "app.adapters.rss.safe_get",
+        lambda url, *, headers, timeout: _FakeResponse(200, b"", {}),
+    )
     result = RssAdapter().fetch(FetchRequest(source=_SOURCE, state={}))
     assert "empty_feed" in result.warnings
     assert result.items == []
