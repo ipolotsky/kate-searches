@@ -9,8 +9,12 @@ networks:
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3
     restart: unless-stopped
+    # Docker 29+ отвергает старую версию API-клиента Traefik ("client version too old").
+    # Пинним версию API, которую поддерживают и клиент Traefik, и демон.
+    environment:
+      - DOCKER_API_VERSION=1.44
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
