@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Выкатка одного окружения на VM. Usage: deploy.sh <prod|staging> <web_tag> <api_tag>
+# Выкатка одного окружения на VM. Usage: deploy.sh <prod|stage> <web_tag> <api_tag>
 set -euo pipefail
 
-ENVN="${1:?usage: deploy.sh <prod|staging> <web_tag> <api_tag>}"
+ENVN="${1:?usage: deploy.sh <prod|stage> <web_tag> <api_tag>}"
 WEB_TAG="${2:?web tag required}"
 API_TAG="${3:?api tag required}"
 
