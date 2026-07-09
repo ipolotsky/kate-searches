@@ -394,3 +394,49 @@ Full-body RSS (extract не нужен): Hypebeast `https://hypebeast.com/feed`,
 3. **Hosted Supabase + деплой** — ключи владельца; после деплоя прогнать `make seed-looton DB=<prod_url>`.
 4. **Решение Kate:** финальные `score_threshold`/приоритет (только HOT или HOT+WARM), веса критериев (стартовые значения — в `looton_seed.json`, правятся в UI настроек).
 5. Калибровка скоринга на реальном потоке (первая неделя, на продакшен-модели `gemini-2.0-flash-lite`).
+
+## Launch-подготовка: ревью + UX + launch-blockers + биллинг/триал + email — готово
+
+Параллельный трек подготовки к боевому запуску (не путать с «M6 — пилот LOOTON» выше — это про данные пилота). Детальный план, решения и pre-deploy чеклист — `docs/09_launch_plan.md`. В плане работы пронумерованы M6.0-M6.3. Проверено локально: **API 154 unit-теста + ruff (lint+format), web tsc + lint + 68 тестов**. Миграции: `0007_reliability.sql`, `0008_billing.sql`, `0009_email.sql`. Integration-тесты (нужен Supabase-стек) и живой e2e (Stripe/Resend с ключами) — на этапе деплоя.
+
+### Независимый ревью (7 измерений, каждая находка адверсариально верифицирована по коду)
+Прогнан multi-agent ревью (бюджет/метеринг, RLS/authz, ingestion, scoring/generation, SSRF/fetch, web-actions, deploy/CI). **13 подтверждённых находок** (1 отклонена верификатором). Чисто (находок нет): RLS/мультитенант-изоляция, платформенные админы, chord-барьеры ingestion, атомарный claim генерации, provisioning тенанта. Launch-blockers из ревью починены в M6.1, остаток корректности (#8/#9/#13) отложен в M6.4.
+
+### M6.0 — UX-фикс
+`apps/web/src/app/[locale]/(app)/layout.tsx`: убран `mx-auto max-w-7xl` со shell (сайдбар прижат к левому краю, зазор на широких экранах убран), контенту дан воздух со всех сторон (`px-6 py-8 lg:px-8`) и верхний отступ, upsell-баннер перенесён в колонку контента.
+
+### M6.1 — launch-blockers (деньги/безопасность/деплой), гейт прода — миграция `0007_reliability.sql`
+`0007`: claim-статус `scoring` (симметрично `drafting`) + `articles.status_changed_at` (для reaper). Починки:
+- **#1 (деньги)** `llm/client.py`: bookkeeping после оплаченного LLM-вызова (`_record_usage`/`_settle_reservation`) сделан best-effort — его сбой больше не пробрасывается, иначе `generate_draft_run` откатывал claim и статья перегенерилась (двойное списание). `HARD_CAPPED_STAGES` в `metering.py`.
+- **#7** `llm/client.py`: ledger-reserve только для стадии `draft` (вне триала) — скоринг больше не падал в `BudgetExceededError` при добитом бюджете и не застревал в `extracted`.
+- **#2 (деньги)** `pipeline/scoring.py`: рестрактор на session_factory-паттерн с атомарным pre-LLM claim `extracted → scoring` (как у генерации) — конкурентные прогоны одного `run_id` (re-dispatch «медленного, но живого» прогона) больше не скорят статью дважды. Репо: `claim_for_scoring`/`release_scoring_claim`, `advance_scored` guard `scoring`.
+- **#3 (деньги+данные)** `pipeline/generation.py`: персист черновика с ретраем транзиентного сбоя, при неудаче — release claim (не застревает в `drafting`); beat-reaper `reap_stale_claims` (каждые 5 мин) освобождает застрявшие `scoring`/`drafting` по `status_changed_at` (порог `claim_stale_minutes=30`, заведомо больше времени сильной модели).
+- **#4/#5/#10/#11 (SSRF)** `fetch/guard.py`: IP-pinning (резолв один раз, коннект на проверенный публичный IP, Host/SNI = хостнейм — закрыт DNS-rebinding); `adapters/rss.py` качает фид через `safe_get` (не даём feedparser ходить в сеть в обход guard); `worker/robots.py` — robots.txt через `safe_get`; `fetch/crawl4ai_fetcher.py` — пост-проверка финального URL (редирект в приватную сеть отбрасывает контент).
+- **#6 (деплой)** `Makefile`: `db-migrate` теперь `set -e` + `psql -v ON_ERROR_STOP=1 --single-transaction` — битая миграция валит `migrate`-джоб и гейтит деплой (раньше exit 0 → деплой на немигрированную прод-БД).
+- **#12 (деплой)** `main.py`: новый `/ready` с реальной пробой БД (`SELECT 1`) + Redis PING (503 при падении); `/health` остаётся liveness; web `/api/health` пробит upstream API; `deploy/compose.yml` api-healthcheck переключён на `/ready`.
+
+### M6.2 — биллинг + триал (card-first Stripe test-mode) — миграция `0008_billing.sql`
+Решения: гибрид-триал **7 дней / $3 hard-cap / 10 черновиков / 3 источника**, воронка **card-first (native Stripe `trial_period_days`)**, Stripe в **test mode на проде** (флип на live — заменой секретов, перед рекламой). Stripe = источник правды по плану/статусу, мост в наш ledger — одно число `ai_budget_usd_month`.
+- `0008`: на `tenants` — `stripe_customer_id/subscription_id`, `subscription_status`, `current_period_end`, `trial_ends_at`, `billing_enabled` (allowlist Checkout), `trial_drafts_limit/sources_limit`; control-таблица `stripe_events` (дедуп вебхуков, только service_role).
+- **Python-энфорс** (`llm/client.py` `_reserve_budget`): на триале (`subscription_status='trialing'`) гейтится и `score` (единый $3-cap ограничивает суммарный COGS), период ledger — фиксированный `'trial'` (не рефилится на стыке месяцев), expiry-guard `TrialExpiredError` (подкласс `BudgetExceededError`); trial drafts-лимит — в `/internal/pipeline/generate` (`PostRepository.count_posts`), trial sources-лимит — в web `upsertSource`.
+- **Stripe в web** (единственный внешне доступный сервис): `lib/stripe/config.ts` (режим из префикса ключа `sk_test_`/`sk_live_` — «режим» и ключи не рассинхронятся; price-иды через env), `_actions/billing.ts` (Checkout с `trial_period_days`, гейт `billing_enabled`; Billing Portal), `api/stripe/webhook/route.ts` (claim-дедуп по `event.id` в `stripe_events`, при сбое хендлера claim удаляется для Stripe-ретрая; `lib/stripe/provisioning.ts` маппит подписку → `plan`/бюджет/статус: trialing→$3, active→бюджет тира, canceled/unpaid→pilot/0).
+- **UI**: `billing/page.tsx` + `components/billing/BillingPanel.tsx` (карточки тарифов, статус, trial-meter, Manage Billing), site-wide **TEST MODE** баннер в layout (из префикса ключа), nav-entry `billing`, «start trial» баннер для новых тенантов, i18n `billing` (ru/en).
+- **Card-first safety**: регистрация (`auth/actions.ts`) даёт новому тенанту `ai_budget_usd_month=0` — self-serve не жжёт AI без карты/триала; пилот провижинит админ.
+
+### M6.3 — email-уведомления (Resend) — миграция `0009_email.sql`
+Архитектура: email-логика (suppression/preferences/Svix-верификация) целиком в Python/Celery; web — тонкий прокси для внешне-доступного вебхука/отписки (зеркально Stripe). Resend Pro. Deps: `resend`, `jinja2`, `svix`.
+- `0009`: `email_preferences` (per-type тумблеры + `unsubscribe_token`), `email_suppression` (bounce/complaint, глобально-unique, pre-send фильтр), `email_dispatch_log` (идемпотентность + аудит, unique `(user_id, notification_type, dedup_key)`).
+- **Модуль** `app/email/`: `templates.py` (Jinja2-layout, ru/en, safe-escaping), `client.py` (send: suppression → digest opt-out → claim-идемпотентность insert-before-send → resend → mark/release), `notifications.py` (4 типа контента), `EmailRepository`.
+- **Уведомления**: welcome (из web-регистрации через `/internal/notify/welcome`), digest (после `finalize_run_task`, dedup по `run_id`), trial-ending и budget-threshold (beat `scan_email_notifications` ежечасно, 50/80/100%). Очередь Celery `emails` + beat-расписание; deploy worker слушает `emails`.
+- **Вебхук/отписка**: web `api/resend/webhook` и `api/unsubscribe` (GET-страница + POST one-click) проксируют на Python `/internal/email/webhook` (Svix-проверка по сырому телу → suppression) и `/internal/email/unsubscribe` (по токену). `List-Unsubscribe` + `List-Unsubscribe-Post` на digest.
+
+### Открытая развилка (test-mode + карта-вперёд) — решена: вариант A
+Владелец: строим систему сразу как положено (card-first Stripe trial), test mode — для внутренней обкатки на тестовых картах (`4242...`), перед рекламой флип на live. Публичного no-card триала не будет. Следствие: пока `sk_test_`, реальные карты Stripe не проходят — публичную рекламу до флипа не запускать. В коде вариант A реализован полностью, дописывать нечего.
+
+### Pre-deploy чеклист (детали в `docs/09`)
+1. Применить миграции 0007-0009 (схема раньше кода; `db-migrate` fail-fast). 2. `make test-integration` на Supabase-стеке. 3. Stripe test: Products/Prices + webhook `https://<domain>/api/stripe/webhook` + `STRIPE_*` env + `billing_enabled` приглашённым. 4. Resend: верификация домена (DKIM/SPF/DMARC), `RESEND_*`/`EMAIL_FROM`/`APP_BASE_URL`, webhook `https://<domain>/api/resend/webhook`. 5. Пилот LOOTON — провижининг админом (регистрация даёт бюджет 0). 6. Перед рекламой — флип Stripe test→live.
+
+### M6.4 (отложенные не-блокеры, решение владельца)
+- **#8** `adapters/sitemap.py`: при падении дочернего sitemap курсор `last_published_at` двигается вперёд — записи упавшего ребёнка теряются. Не двигать курсор при `child_fetch_error`.
+- **#9** `llm/client.py`: Instructor при провале валидации делает доп. платные вызовы, чью стоимость `completion_cost` не считает — hard-cap недосчитывает до 2-4x. Учитывать usage всех попыток.
+- **#13** `_actions/posts.ts`: `updatePostStatus` без compare-and-swap — конкурентные легальные переходы дают запрещённое состояние. Добавить `.eq("status", from)` + проверку affected-row.

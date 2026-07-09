@@ -23,10 +23,10 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture(autouse=True)
 def _allow_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
-    # SSRF-guard (assert_public_url) в проде всегда включён и НЕ гейтится ingestion_guards_enabled.
-    # .test-хосты фикстур не резолвятся (dns_error), а фид мокается и реальной сети нет —
-    # поэтому здесь guard отключаем, как в test_health.
-    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
+    # rss.fetch качает фид через safe_get (egress-guard + IP-pinning), потом парсит байты.
+    # .test-хосты фикстур не резолвятся и реальной сети нет — подменяем safe_get фейком,
+    # несущим запрошенный URL в .content, а feedparser.parse ниже возвращает мок-entries.
+    monkeypatch.setattr("app.adapters.rss.safe_get", lambda url, **kwargs: _FakeResponse(url))
 
 
 _BODY_HOT = "Hot fresh archive drop unique collector story. " * 30
@@ -39,6 +39,13 @@ class _FakeParsed:
         self.entries = entries
         self.etag = None
         self.bozo = 0
+
+
+class _FakeResponse:
+    def __init__(self, url: str) -> None:
+        self.content = url.encode()
+        self.status_code = 200
+        self.headers: dict = {}
 
 
 def _entry(guid: str, link: str, body: str, when: datetime) -> dict:
@@ -133,7 +140,7 @@ def _install(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     monkeypatch.setattr(
         "app.adapters.rss.feedparser.parse",
-        lambda url, etag=None: _FakeParsed(entries),
+        lambda content, etag=None: _FakeParsed(entries),
     )
     monkeypatch.setattr(settings, "ingestion_guards_enabled", False)
 

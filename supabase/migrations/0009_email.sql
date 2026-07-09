@@ -25,6 +25,9 @@ drop policy if exists email_preferences_update on email_preferences;
 create policy email_preferences_update on email_preferences
   for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 revoke insert, delete on email_preferences from authenticated;
+-- TRUNCATE обходит RLS (сносит предпочтения всех тенантов). Supabase дефолтно грантит его
+-- authenticated на новой таблице — снимаем явно, как в 0002 для content-таблиц (M1 #8).
+revoke truncate on email_preferences from authenticated;
 
 -- ─────────────────────────────────────────── email_suppression: bounce/complaint, pre-send фильтр
 -- Глобально-уникальный адрес (жалоба = не мейлить нигде), tenant_id для аудита. email хранится

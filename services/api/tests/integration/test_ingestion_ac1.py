@@ -22,10 +22,10 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture(autouse=True)
 def _allow_test_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
-    # SSRF-guard (assert_public_url) в проде всегда включён и НЕ гейтится ingestion_guards_enabled.
-    # .test-хосты фикстур не резолвятся (dns_error), а фид мокается и реальной сети нет —
-    # поэтому здесь guard отключаем, как в test_health.
-    monkeypatch.setattr("app.adapters.rss.assert_public_url", lambda url: None)
+    # rss.fetch качает фид через safe_get (egress-guard + IP-pinning), потом парсит байты.
+    # .test-хосты фикстур не резолвятся и реальной сети нет — подменяем safe_get фейком,
+    # несущим запрошенный URL в .content, а feedparser.parse ниже маппит URL -> entries.
+    monkeypatch.setattr("app.adapters.rss.safe_get", lambda url, **kwargs: _FakeResponse(url))
 
 
 _LONG_FRESH = "Fresh unique archive drop coverage. " * 30
@@ -38,6 +38,13 @@ class _FakeParsed:
         self.entries = entries
         self.etag = None
         self.bozo = 0
+
+
+class _FakeResponse:
+    def __init__(self, url: str) -> None:
+        self.content = url.encode()
+        self.status_code = 200
+        self.headers: dict = {}
 
 
 def _entry(guid, link, body, when: datetime | None):
@@ -106,7 +113,7 @@ def _install_feeds(monkeypatch) -> None:
     feeds = {"https://a.test/feed": feed_a, "https://b.test/feed": feed_b}
     monkeypatch.setattr(
         "app.adapters.rss.feedparser.parse",
-        lambda url, etag=None: _FakeParsed(feeds.get(url, [])),
+        lambda content, etag=None: _FakeParsed(feeds.get(content.decode(), [])),
     )
     monkeypatch.setattr(settings, "ingestion_guards_enabled", False)
 
@@ -234,7 +241,7 @@ def test_content_cluster_collapses_to_single_canonical(monkeypatch) -> None:
     }
     monkeypatch.setattr(
         "app.adapters.rss.feedparser.parse",
-        lambda url, etag=None: _FakeParsed(feeds.get(url, [])),
+        lambda content, etag=None: _FakeParsed(feeds.get(content.decode(), [])),
     )
     try:
         with session_scope() as session:
@@ -269,8 +276,8 @@ def test_failing_source_does_not_hang_run(monkeypatch) -> None:
     bad_url = f"https://s{src_bad.hex[:6]}.test/feed"
     ok_body = "A perfectly good fresh article body for the healthy source feed. " * 20
 
-    def flaky_parse(url, etag=None):
-        if url == bad_url:
+    def flaky_parse(content, etag=None):
+        if content.decode() == bad_url:
             raise RuntimeError("source is down")
         return _FakeParsed([_entry("ok", "https://n.test/ok", ok_body, today)])
 

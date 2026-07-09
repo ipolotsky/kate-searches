@@ -128,3 +128,39 @@ def test_control_tables_are_read_only(admin: psycopg.Connection) -> None:
     finally:
         with admin.cursor() as cur:
             cur.execute("delete from tenants where id = %s", (tenant_id,))
+
+
+def test_m6_control_tables_reject_authenticated_writes(admin: psycopg.Connection) -> None:
+    """Control-таблицы M6 (0008/0009) недоступны на запись из-под authenticated.
+
+    Дисциплина M1 #8: Supabase дефолтно грантит authenticated все привилегии на новую таблицу,
+    включая TRUNCATE (обходит RLS). Каждая новая control-таблица должна их явно снять.
+    """
+    tenant_id, user_id, _ = _seed_tenant(admin, "tenant-m6")
+    try:
+        with psycopg.connect(database_url()) as scoped:
+            # TRUNCATE обходит RLS (снёс бы предпочтения всех тенантов); в 0009 снят.
+            cur = _enter_authenticated(scoped, user_id)
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                cur.execute("truncate email_preferences")
+            scoped.rollback()
+
+            # service_role-only control-таблицы: authenticated не пишет вовсе.
+            inserts = {
+                "stripe_events": "insert into stripe_events (event_id) values ('evt_x')",
+                "email_suppression": (
+                    "insert into email_suppression (email, reason) values ('a@b.co', 'manual')"
+                ),
+                "email_dispatch_log": (
+                    "insert into email_dispatch_log (notification_type, dedup_key) "
+                    "values ('welcome', 'k')"
+                ),
+            }
+            for statement in inserts.values():
+                cur = _enter_authenticated(scoped, user_id)
+                with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                    cur.execute(statement)
+                scoped.rollback()
+    finally:
+        with admin.cursor() as cur:
+            cur.execute("delete from tenants where id = %s", (tenant_id,))
