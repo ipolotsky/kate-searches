@@ -1,6 +1,6 @@
 # Деплой на VM (prod + staging)
 
-Прод и staging крутятся на одной VM двумя изолированными compose-проектами (`kate-prod`, `kate-staging`): свои сети, контейнеры, Redis и `.env`. Общий Traefik держит TLS и разводит по хостнеймам. Образы собираются в GitHub Actions и пушатся в GHCR, VM только `pull` + `docker rollout`.
+Прод и staging крутятся на одной VM двумя изолированными compose-проектами (`kate-prod`, `kate-stage`): свои сети, контейнеры, Redis и `.env`. Общий Traefik держит TLS и разводит по хостнеймам. Образы собираются в GitHub Actions и пушатся в GHCR, VM только `pull` + `docker rollout`.
 
 Реком. VM: 4 vCPU / 8 GB RAM / 40+ GB SSD + 2-4 GB swap.
 
@@ -32,15 +32,15 @@
    ```
 6. Раскладка стека и секретов:
    ```bash
-   mkdir -p /srv/kate-searches/prod /srv/kate-searches/staging
+   mkdir -p /srv/kate-searches/prod /srv/kate-searches/stage
    # положить deploy/compose.yml и deploy/deploy.sh в /srv/kate-searches/
    chmod +x /srv/kate-searches/deploy.sh
    # заполнить руками, chmod 600:
    #   /srv/kate-searches/prod/.env      (по образцу deploy/env.example, STACK=kate-prod, DOMAIN=taskyou.me)
-   #   /srv/kate-searches/staging/.env   (STACK=kate-staging, DOMAIN=staging.taskyou.me, свой Supabase-проект)
-   chmod 600 /srv/kate-searches/prod/.env /srv/kate-searches/staging/.env
+   #   /srv/kate-searches/stage/.env   (STACK=kate-stage, DOMAIN=stage.taskyou.me, свой Supabase-проект)
+   chmod 600 /srv/kate-searches/prod/.env /srv/kate-searches/stage/.env
    ```
-7. DNS: A-записи `taskyou.me` и `staging.taskyou.me` на IP VM. Переезд на `katesearch.es` позже — сменить `DOMAIN` в `.env`, добавить A-записи, Traefik перевыпустит сертификат.
+7. DNS: A-записи `taskyou.me` и `stage.taskyou.me` на IP VM. Переезд на `katesearch.es` позже — сменить `DOMAIN` в `.env`, добавить A-записи, Traefik перевыпустит сертификат.
 8. Второй проект Supabase под staging: создать, прогнать миграции (`DATABASE_URL=<staging-db> make db-migrate`), взять URL/anon/service-role в `staging/.env`.
 
 `compose.yml` и `deploy.sh` дальше синхронизируются автоматически из репозитория на шаге деплоя (scp), править их руками на VM не нужно.
@@ -48,6 +48,6 @@
 ## Ручной выкат (для отладки)
 
 ```bash
-/srv/kate-searches/deploy.sh staging staging-<sha> staging-<sha>
+/srv/kate-searches/deploy.sh stage stage-<sha> stage-<sha>
 /srv/kate-searches/deploy.sh prod prod-<sha> prod-<sha>
 ```

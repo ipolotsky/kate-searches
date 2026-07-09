@@ -15,7 +15,7 @@ GitHub Actions ──build+push──> GHCR (ghcr.io/ipolotsky/kate-searches/{we
                          │
    Traefik :80/:443 (shared, Let's Encrypt)
      taskyou.me           -> kate-prod_web:3000
-     staging.taskyou.me   -> kate-staging_web:3000
+     stage.taskyou.me   -> kate-stage_web:3000
    api/worker/beat/redis  -> только внутренняя сеть проекта (наружу не публикуются)
 ```
 
@@ -31,11 +31,11 @@ GitHub Actions ──build+push──> GHCR (ghcr.io/ipolotsky/kate-searches/{we
 
 | | prod | staging |
 |---|---|---|
-| compose-проект (`COMPOSE_PROJECT_NAME`) | `kate-prod` | `kate-staging` |
-| домен | `taskyou.me` | `staging.taskyou.me` |
+| compose-проект (`COMPOSE_PROJECT_NAME`) | `kate-prod` | `kate-stage` |
+| домен | `taskyou.me` | `stage.taskyou.me` |
 | БД | отдельный проект Supabase | отдельный проект Supabase |
 | Redis | свой контейнер | свой контейнер |
-| каталог секретов на VM | `/srv/kate-searches/prod/.env` | `/srv/kate-searches/staging/.env` |
+| каталог секретов на VM | `/srv/kate-searches/prod/.env` | `/srv/kate-searches/stage/.env` |
 
 Что даёт изоляция:
 1. Раздельные Supabase-проекты - тестовые прогоны пайплайна не пишут в прод-данные.
@@ -99,7 +99,7 @@ Zero-downtime выкатка через плагин `docker-rollout` (scale-up 
 
 Триггер: `pull_request` в `main` (`opened`/`synchronize`/`reopened`/`ready_for_review`). Concurrency по номеру PR с `cancel-in-progress` - новый пуш в PR отменяет предыдущую выкатку. Черновые PR (draft) деплой не запускают, но CI на них прогоняется.
 
-Джобы: `ci` (reusable) -> `build` (buildx, push `web:staging-<sha>` со staging build-args + `api:staging-<sha>`, кэш `type=gha`) -> `migrate` (миграции staging-БД) -> `deploy` (scp `compose.yml`+`deploy.sh` на VM, ssh -> `deploy.sh staging`) -> `comment` (sticky-коммент в PR: ссылка на staging + чек-лист).
+Джобы: `ci` (reusable) -> `build` (buildx, push `web:stage-<sha>` со staging build-args + `api:stage-<sha>`, кэш `type=gha`) -> `migrate` (миграции staging-БД) -> `deploy` (scp `compose.yml`+`deploy.sh` на VM, ssh -> `deploy.sh stage`) -> `comment` (sticky-коммент в PR: ссылка на staging + чек-лист).
 
 ### `deploy-prod.yml`
 
@@ -170,12 +170,12 @@ Zero-downtime выкатка через плагин `docker-rollout` (scale-up 
    ```
 6. Каталоги и секреты стека:
    ```bash
-   mkdir -p /srv/kate-searches/prod /srv/kate-searches/staging
+   mkdir -p /srv/kate-searches/prod /srv/kate-searches/stage
    # заполнить по образцу deploy/env.example, chmod 600:
    #   prod/.env      (STACK=kate-prod,    DOMAIN=taskyou.me)
-   #   staging/.env   (STACK=kate-staging, DOMAIN=staging.taskyou.me, свой Supabase)
+   #   staging/.env   (STACK=kate-stage, DOMAIN=stage.taskyou.me, свой Supabase)
    ```
-7. DNS: A-записи `taskyou.me` и `staging.taskyou.me` на IP VM.
+7. DNS: A-записи `taskyou.me` и `stage.taskyou.me` на IP VM.
 8. Второй проект Supabase под staging: создать, прогнать миграции (`DATABASE_URL=<staging-db> make db-migrate`), взять URL/anon/service-role в `staging/.env`.
 9. GitHub: завести секреты и переменную `STAGING_URL` (см. §7).
 
@@ -185,13 +185,13 @@ Zero-downtime выкатка через плагин `docker-rollout` (scale-up 
 
 - **Ручной деплой** (для отладки, обычно делает CI):
   ```bash
-  /srv/kate-searches/deploy.sh staging staging-<sha> staging-<sha>
+  /srv/kate-searches/deploy.sh stage stage-<sha> stage-<sha>
   /srv/kate-searches/deploy.sh prod    prod-<sha>    prod-<sha>
   ```
 - **Откат**: перекатить предыдущий тег образа тем же скриптом, например `deploy.sh prod prod-<предыдущий-sha> prod-<предыдущий-sha>`. Образы в GHCR тегируются по каждому `sha`, откат это просто rollout старого тега.
 - **Логи**: `cd /srv/kate-searches/<env> && docker compose logs -f <web|api|worker|beat>`.
 - **Статус**: `docker compose ps` в каталоге окружения; health контейнеров - в колонке STATUS.
-- **Проверка снаружи**: `curl -I https://taskyou.me` и `https://staging.taskyou.me` -> 200 и валидный TLS.
+- **Проверка снаружи**: `curl -I https://taskyou.me` и `https://stage.taskyou.me` -> 200 и валидный TLS.
 - **Переезд на новый домен** (`taskyou.me` -> `katesearch.es`): сменить `DOMAIN` в `.env` окружения, добавить A-записи, следующий деплой перевыпустит сертификат Traefik. Web-образ придётся пересобрать, если сменится и Supabase-проект (запечён `NEXT_PUBLIC_*`).
 
 ## 11. Риски и решения
@@ -212,3 +212,17 @@ Zero-downtime выкатка через плагин `docker-rollout` (scale-up 
 - Self-hosted LiteLLM + Langfuse рядом с api для метеринга и бюджетов per-tenant (в MVP-проде выключены: прямой SDK, `LANGFUSE_ENABLED=false`).
 - Промоушен api-образа из staging в prod ре-тегом дайджеста вместо пересборки.
 - Метрики/алерты (healthcheck-эндпоинты уже есть у web и api).
+
+## 13. Факт развёртывания и гочи bring-up
+
+Первичный запуск: прод `https://taskyou.me` и stage `https://stage.taskyou.me` на одной VM (GCP, Debian 13, 2 vCPU / 8 GB, IP 35.223.85.130), пользователь `kate`. Оба окружения развёрнуты через CI/CD (PR -> stage, merge -> prod), TLS от Let's Encrypt, все контейнеры healthy. Наблюдения и решения, которые всплыли и уже зашиты в конфиги:
+
+- **VM 2 vCPU (не 4), swap 0 -> добавлен swap 4 GB.** Лимиты памяти: prod (web 640 / api 512 / worker 768 / beat 160 / redis 192 MB, `--concurrency 2`), stage ниже (web 448 / api 384 / worker 448 / beat 128 / redis 128 MB, `--concurrency 1`). Параметризованы через `.env` (см. `deploy/env.example`). Пиковое потребление обоих стеков + Traefik ~1.5 GB из 7.8 GB.
+- **Docker 29 слишком свежий для Traefik v3.1** (демон отвергает старую версию API-клиента: «client version 1.24 too old»). Решение: образ `traefik:v3` (актуальный, новый встроенный docker-клиент). `DOCKER_API_VERSION` не помогает.
+- **Firewall GCP** открыт штатными сетевыми тегами инстанса `http-server`/`https-server` (80/443 из 0.0.0.0/0), отдельные правила не нужны.
+- **`DATABASE_URL` с спецсимволом в пароле.** Если пароль Supabase содержит `@` (или иной спецсимвол), он должен быть percent-энкоднут (`@` -> `%40`), иначе libpq/psql/SQLAlchemy парсят хост неверно и `/ready` не поднимается, а `make db-migrate` падает. Брать строку из **Session pooler** (`aws-...pooler.supabase.com`, IPv4), прямое подключение `db.<ref>.supabase.co` — только IPv6.
+- **web читает `NEXT_PUBLIC_*` и в рантайме.** В серверных `.env` на VM должны быть `NEXT_PUBLIC_SUPABASE_URL` и `NEXT_PUBLIC_SUPABASE_ANON_KEY` (не только `SUPABASE_URL`/`SUPABASE_ANON_KEY`).
+- **Healthcheck образа рассчитан на роль api.** worker и beat не поднимают HTTP :8000, поэтому вшитый healthcheck им переопределён в compose: worker -> `celery inspect ping`, beat -> `disable` (живость покрывает `restart: unless-stopped`).
+- **celery beat под non-root пишет `celerybeat-schedule` в cwd `/app` (root-owned) -> Permission denied.** Решение: `--schedule /tmp/celerybeat-schedule`.
+- **CI -> VM ssh.** Для `appleboy/ssh-action` заведена выделенная deploy-пара: публичный ключ в `~kate/.ssh/authorized_keys`, приватный в секрете `VPS_SSH_KEY`. Ключ `github_ed25519` (Deploy key репозитория) — это для git pull с сервера, направление другое.
+- **Стоимость LLM.** Обе Supabase-БД на момент запуска пустые (0 тенантов/источников), beat диспатчит только due-тенантов -> нулевые вызовы LLM до онбординга. Модель драфта по умолчанию `openai/gpt-5-mini` требует `OPENAI_API_KEY` (или переключить `LLM_MODEL_DRAFT` на Gemini); скоринг — Gemini.
