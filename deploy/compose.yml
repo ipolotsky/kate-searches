@@ -1,9 +1,12 @@
 # Один шаблон стека на оба окружения. Значения ${...} берутся из .env рядом с этим файлом
-# (COMPOSE_PROJECT_NAME=${STACK}: kate-prod / kate-staging). Разворачивается через deploy.sh.
+# (COMPOSE_PROJECT_NAME=${STACK}: kate-prod / kate-stage). Разворачивается через deploy.sh.
 #
 # web/api не имеют container_name и host ports — это обязательное условие docker rollout
 # (rollout поднимает вторую реплику, фиксированное имя/порт этому мешают). Наружу торчит
 # только web через Traefik; api/worker/beat/redis живут в приватной сети internal.
+#
+# Лимиты памяти и concurrency воркера параметризованы через .env: у stage значения ниже,
+# чем у prod (см. deploy/env.example и per-env .env на VM).
 name: ${STACK}
 
 networks:
@@ -21,6 +24,7 @@ services:
       API_BASE_URL: http://api:8000
       PORT: "3000"
     networks: [proxy, internal]
+    mem_limit: ${WEB_MEM:-640m}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
       interval: 15s
@@ -42,6 +46,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
     networks: [internal]
+    mem_limit: ${API_MEM:-512m}
     depends_on:
       redis:
         condition: service_healthy
@@ -55,11 +60,12 @@ services:
   worker:
     image: ghcr.io/ipolotsky/kate-searches/api:${API_TAG}
     restart: unless-stopped
-    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract,score,generate,emails", "-l", "info", "--concurrency", "2"]
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-Q", "default,fetch,extract,score,generate,emails", "-l", "info", "--concurrency", "${WORKER_CONCURRENCY:-2}"]
     env_file: [.env]
     environment:
       REDIS_URL: redis://redis:6379/0
     networks: [internal]
+    mem_limit: ${WORKER_MEM:-768m}
     depends_on:
       redis:
         condition: service_healthy
@@ -73,6 +79,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
     networks: [internal]
+    mem_limit: ${BEAT_MEM:-160m}
     depends_on:
       redis:
         condition: service_healthy
@@ -83,6 +90,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     networks: [internal]
+    mem_limit: ${REDIS_MEM:-192m}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
