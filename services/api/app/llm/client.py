@@ -84,6 +84,11 @@ def structured_completion_with_usage[T: BaseModel](
 
     trace_id = str(uuid.uuid4())
     client = instructor.from_litellm(litellm.completion)
+    # Instructor при провале валидации делает доп. платные вызовы (ретраи). Хук completion:response
+    # фаертся на КАЖДЫЙ ответ модели, включая ретраи — копим все, чтобы учесть суммарную стоимость.
+    # Иначе hard-cap недосчитывал бы расход в 2-4x (completion_cost видел только финальный ответ).
+    attempts: list = []
+    client.on("completion:response", attempts.append)
     try:
         result, completion = client.chat.completions.create_with_completion(
             model=model,
@@ -96,21 +101,46 @@ def structured_completion_with_usage[T: BaseModel](
             **_proxy_params(),
         )
     except Exception:
-        # Вызов не состоялся — денег не потратили: рефанд резерва.
-        _refund_reservation(
-            tenant_id=tenant_id, reservation=reservation, session_factory=session_factory
-        )
+        # attempts не пуст => ретраи валидации реально стреляли по провайдеру до броска: деньги
+        # потрачены. Пишем их usage и сводим резерв к факту (иначе hard-cap не учёл бы сожжённое
+        # и полный рефанд обнулил бы расход). Пусто => ни одного ответа модели, полный рефанд.
+        if attempts:
+            spent = _record_usage(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                stage=stage,
+                model=model,
+                completions=attempts,
+                request_id=trace_id,
+                pipeline_run_id=pipeline_run_id,
+                session_factory=session_factory,
+            )
+            try:
+                _settle_reservation(
+                    tenant_id=tenant_id,
+                    reservation=reservation,
+                    cost=spent,
+                    session_factory=session_factory,
+                )
+            except Exception:
+                pass
+        else:
+            _refund_reservation(
+                tenant_id=tenant_id, reservation=reservation, session_factory=session_factory
+            )
         raise
 
     # Вызов уже оплачен провайдеру. Дальнейший bookkeeping (запись ai_usage, сверка резерва)
     # строго best-effort: его сбой НЕ должен пробрасываться, иначе generate_draft_run поймает
     # исключение, откатит claim (drafting -> scored) и статья перегенерится — двойное списание.
+    # attempts содержит и финальный ответ (хук фаертся на него тоже); fallback на [completion],
+    # если хук не сработал.
     cost = _record_usage(
         tenant_id=tenant_id,
         user_id=user_id,
         stage=stage,
         model=model,
-        completion=completion,
+        completions=attempts or [completion],
         request_id=trace_id,
         pipeline_run_id=pipeline_run_id,
         session_factory=session_factory,
@@ -248,21 +278,33 @@ def _record_usage(
     user_id: str | None,
     stage: str,
     model: str,
-    completion: object,
+    completions: list,
     request_id: str,
     pipeline_run_id: uuid.UUID | str | None,
     session_factory: SessionFactory,
 ) -> float:
-    """Записать стоимость вызова в ai_usage (зеркало Langfuse для апселла). Вернуть стоимость."""
+    """Записать суммарную стоимость всех попыток вызова в ai_usage. Вернуть стоимость.
+
+    completions — все ответы модели за один structured_completion (финальный + ретраи валидации
+    Instructor). Стоимость и токены суммируются по попыткам, чтобы hard-cap не недосчитывал расход.
+    """
     import litellm
 
-    try:
-        cost = float(litellm.completion_cost(completion_response=completion) or 0.0)
-    except Exception:
-        cost = 0.0
-    usage = getattr(completion, "usage", None)
-    input_tokens = getattr(usage, "prompt_tokens", None)
-    output_tokens = getattr(usage, "completion_tokens", None)
+    cost = 0.0
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    for completion in completions:
+        try:
+            cost += float(litellm.completion_cost(completion_response=completion) or 0.0)
+        except Exception:
+            pass
+        usage = getattr(completion, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", None)
+        completion_tokens = getattr(usage, "completion_tokens", None)
+        if prompt_tokens is not None:
+            input_tokens = (input_tokens or 0) + prompt_tokens
+        if completion_tokens is not None:
+            output_tokens = (output_tokens or 0) + completion_tokens
     try:
         with session_factory() as session:
             insert_ai_usage(

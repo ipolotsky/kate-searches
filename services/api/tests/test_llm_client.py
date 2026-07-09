@@ -51,6 +51,40 @@ class _FakeSession:
         return SimpleNamespace(id=primary_key, ai_budget_usd_month=None)
 
 
+class _FakeInstructor:
+    """Мини-инструктор: поддерживает .on(hook) и эмулирует completion:response на каждый ответ.
+
+    responses — все ответы модели за вызов (финал + ретраи валидации). Хук фаертся на каждый,
+    как в реальном Instructor, а create_with_completion возвращает (result, финальный_ответ).
+    """
+
+    def __init__(
+        self, result: object, responses: list, *, on_create=None, raise_after=None
+    ) -> None:
+        self._result = result
+        self._responses = responses
+        self._on_create = on_create
+        self._raise_after = raise_after
+        self._hooks: dict = {}
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create_with_completion=self._create)
+        )
+
+    def on(self, event: str, handler) -> None:
+        self._hooks.setdefault(event, []).append(handler)
+
+    def _create(self, **kwargs: object):
+        if self._on_create is not None:
+            self._on_create(kwargs)
+        for response in self._responses:
+            for handler in self._hooks.get("completion:response", []):
+                handler(response)
+        # Эмуляция исчерпания ретраев валидации: ответы уже оплачены (хук сработал), затем бросок.
+        if self._raise_after is not None:
+            raise self._raise_after
+        return self._result, self._responses[-1]
+
+
 def test_configure_provider_keys_bridges_settings_to_environ(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -83,13 +117,11 @@ def test_structured_completion_writes_ai_usage(monkeypatch: pytest.MonkeyPatch) 
     score = _relevance()
     completion = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=1200, completion_tokens=200))
 
-    class _FakeCompletions:
-        def create_with_completion(self, **kwargs: object):
-            assert kwargs["metadata"]["stage"] == "score"
-            assert kwargs["metadata"]["tenant_id"]
-            return score, completion
+    def _assert_meta(kwargs: dict) -> None:
+        assert kwargs["metadata"]["stage"] == "score"
+        assert kwargs["metadata"]["tenant_id"]
 
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions()))
+    fake_client = _FakeInstructor(score, [completion], on_create=_assert_meta)
     monkeypatch.setattr(instructor, "from_litellm", lambda _fn: fake_client)
     monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.00031)
 
@@ -127,11 +159,7 @@ def test_structured_completion_attributes_pipeline_run_id(monkeypatch: pytest.Mo
     score = _relevance()
     completion = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5))
 
-    class _FakeCompletions:
-        def create_with_completion(self, **kwargs: object):
-            return score, completion
-
-    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions()))
+    fake_client = _FakeInstructor(score, [completion])
     monkeypatch.setattr(instructor, "from_litellm", lambda _fn: fake_client)
     monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.0)
 
@@ -212,14 +240,8 @@ def test_structured_completion_survives_usage_write_failure(
     def fake_factory():
         yield _FailingSession()
 
-    class _FakeCompletions:
-        def create_with_completion(self, **_: object):
-            return score, completion
-
     monkeypatch.setattr(
-        instructor,
-        "from_litellm",
-        lambda _fn: SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions())),
+        instructor, "from_litellm", lambda _fn: _FakeInstructor(score, [completion])
     )
     monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.05)
 
@@ -234,6 +256,78 @@ def test_structured_completion_survives_usage_write_failure(
 
     assert isinstance(result, RelevanceScore)
     assert cost == pytest.approx(0.05)
+
+
+def test_structured_completion_sums_retry_attempt_costs(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Instructor при провале валидации делает доп. платные вызовы. Учитываем стоимость/токены
+    # ВСЕХ попыток (иначе hard-cap недосчитывает расход в 2-4x), а не только финального ответа.
+    added: list = []
+
+    @contextmanager
+    def fake_factory():
+        yield _FakeSession(added)
+
+    score = _relevance()
+    responses = [
+        SimpleNamespace(usage=SimpleNamespace(prompt_tokens=1000, completion_tokens=100)),
+        SimpleNamespace(usage=SimpleNamespace(prompt_tokens=1100, completion_tokens=120)),
+        SimpleNamespace(usage=SimpleNamespace(prompt_tokens=1200, completion_tokens=150)),
+    ]
+    monkeypatch.setattr(instructor, "from_litellm", lambda _fn: _FakeInstructor(score, responses))
+    monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.02)  # 0.02 за каждую попытку
+
+    _result, cost = llm_client.structured_completion_with_usage(
+        model="openai/gpt-5-mini",
+        messages=[{"role": "user", "content": "x"}],
+        response_model=RelevanceScore,
+        tenant_id=str(uuid.uuid4()),
+        stage="score",
+        session_factory=fake_factory,
+    )
+
+    assert cost == pytest.approx(0.06)  # 3 попытки * 0.02
+    row = added[0]
+    assert float(row.cost_usd) == pytest.approx(0.06)
+    assert row.input_tokens == 3300  # 1000 + 1100 + 1200
+    assert row.output_tokens == 370  # 100 + 120 + 150
+
+
+def test_records_paid_attempts_when_retries_exhausted(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Ретраи валидации исчерпаны -> Instructor бросает, но попытки уже оплачены. Их стоимость
+    # должна попасть в ai_usage (иначе hard-cap не учтёт сожжённые деньги, а полный рефанд обнулит
+    # расход). Ранее except делал только рефанд и ничего не записывал.
+    added: list = []
+
+    @contextmanager
+    def fake_factory():
+        yield _FakeSession(added)
+
+    responses = [
+        SimpleNamespace(usage=SimpleNamespace(prompt_tokens=900, completion_tokens=80)),
+        SimpleNamespace(usage=SimpleNamespace(prompt_tokens=950, completion_tokens=90)),
+    ]
+    monkeypatch.setattr(
+        instructor,
+        "from_litellm",
+        lambda _fn: _FakeInstructor(
+            _relevance(), responses, raise_after=RuntimeError("validation exhausted")
+        ),
+    )
+    monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.03)
+
+    with pytest.raises(RuntimeError):
+        llm_client.structured_completion_with_usage(
+            model="openai/gpt-5-mini",
+            messages=[{"role": "user", "content": "x"}],
+            response_model=RelevanceScore,
+            tenant_id=str(uuid.uuid4()),
+            stage="draft",
+            session_factory=fake_factory,
+        )
+
+    assert len(added) == 1  # оплаченные попытки записаны, несмотря на бросок
+    assert float(added[0].cost_usd) == pytest.approx(0.06)  # 2 * 0.03
+    assert added[0].input_tokens == 1850  # 900 + 950
 
 
 def _trial_factory(tenant):

@@ -70,12 +70,21 @@ export const updatePostStatus = async (
     return { ok: false, code: "illegalTransition" };
   }
 
+  // Compare-and-swap: пишем, только если статус всё ещё `from`. Конкурентный легальный переход
+  // (две вкладки / быстрые клики) успевает сдвинуть строку между read и write — без .eq("status")
+  // мы бы записали поверх устаревшей проверки canTransition и получили запрещённое состояние.
   const updated = await supabase
     .from("posts")
     .update({ status: next, updated_at: new Date().toISOString() })
-    .eq("id", postId);
+    .eq("id", postId)
+    .eq("status", from)
+    .select("id");
   if (updated.error != null) {
     return { ok: false, code: "updateFailed" };
+  }
+  if (updated.data == null || updated.data.length === 0) {
+    // Ноль затронутых строк: статус увели конкурентно — переход устарел.
+    return { ok: false, code: "conflict" };
   }
 
   revalidatePath(`/${locale}/dashboard`);

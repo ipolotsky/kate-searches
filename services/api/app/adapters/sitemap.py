@@ -60,6 +60,7 @@ class SitemapAdapter(BaseAdapter):
         parsed = parse_sitemap(root_xml)
 
         entries: list[dict]
+        child_failed = False
         if parsed["kind"] == "index":
             entries = []
             if not config.follow_index:
@@ -70,6 +71,7 @@ class SitemapAdapter(BaseAdapter):
                         child_parsed = parse_sitemap(_download(child))
                     except Exception:
                         warnings.append("child_fetch_error")
+                        child_failed = True
                         continue
                     entries.extend(child_parsed.get("entries", []))
         else:
@@ -104,7 +106,11 @@ class SitemapAdapter(BaseAdapter):
             if len(selected) >= config.max_urls:
                 break
 
-        cursor.last_published_at = max_seen
+        # Не двигаем курсор, если хоть один дочерний sitemap не скачался: его записи ещё не собраны,
+        # а продвижение last_published_at мимо их дат отсекло бы их в следующих прогонах (потеря).
+        # Источник дочитается целиком в следующий прогон (upsert идемпотентен).
+        if not child_failed:
+            cursor.last_published_at = max_seen
         stats = FetchStats(fetched=fetched, new=len(selected), skipped=fetched - len(selected))
         return FetchResult(
             items=selected,

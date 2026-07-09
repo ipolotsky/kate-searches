@@ -3,13 +3,17 @@
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
+import instructor
+import litellm
 import pytest
 
 from app.db.engine import session_scope
 from app.db.models import Article, BrandProfile, Tenant
 from app.db.repositories import ledger_month_spent, reserve_budget, settle_budget
-from app.metering import BudgetExceededError
+from app.llm import client as llm_client
+from app.metering import BudgetExceededError, period_key_utc
 from app.models.scoring import CriterionScore, RelevanceScore
 from app.pipeline.generation import generate_draft_run
 from app.pipeline.scoring import score_article_run
@@ -170,6 +174,59 @@ def test_generation_stage_blocked_when_budget_zero_releases_claim() -> None:
         # claim откатан: статья вернулась в scored (не застряла в drafting), поста нет.
         with session_scope() as session:
             assert session.get(Article, article_id).status == "scored"
+    finally:
+        with session_scope() as session:
+            session.query(Tenant).filter_by(id=tenant_id).delete()
+
+
+class _RaisingInstructor:
+    """Инструктор, который фаертся хуком на каждый ответ, затем бросает (ретраи исчерпаны)."""
+
+    def __init__(self, responses: list) -> None:
+        self._responses = responses
+        self._hooks: dict = {}
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create_with_completion=self._create)
+        )
+
+    def on(self, event: str, handler) -> None:
+        self._hooks.setdefault(event, []).append(handler)
+
+    def _create(self, **_: object):
+        for response in self._responses:
+            for handler in self._hooks.get("completion:response", []):
+                handler(response)
+        raise RuntimeError("validation exhausted")
+
+
+def test_failed_call_with_paid_retries_settles_ledger_not_full_refund(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Провал вызова после оплаченных ретраев сводит ledger к реальному расходу, а не рефандит в 0
+    # (иначе hard-cap не увидел бы сожжённые деньги). draft гейтится, бюджет 10 -> резерв 0.06.
+    with session_scope() as session:
+        tenant_id = _tenant(session, Decimal("10"))
+    try:
+        responses = [
+            SimpleNamespace(usage=SimpleNamespace(prompt_tokens=100, completion_tokens=10)),
+            SimpleNamespace(usage=SimpleNamespace(prompt_tokens=100, completion_tokens=10)),
+        ]
+        monkeypatch.setattr(instructor, "from_litellm", lambda _fn: _RaisingInstructor(responses))
+        monkeypatch.setattr(litellm, "completion_cost", lambda **_: 0.02)
+
+        with pytest.raises(RuntimeError):
+            llm_client.structured_completion_with_usage(
+                model="openai/gpt-5-mini",
+                messages=[{"role": "user", "content": "x"}],
+                response_model=RelevanceScore,
+                tenant_id=str(tenant_id),
+                stage="draft",
+            )
+
+        with session_scope() as session:
+            # резерв 0.06 сведён к факту 0.04 (2 попытки * 0.02), а не рефанднут в 0.
+            spent = ledger_month_spent(session, tenant_id, period=period_key_utc())
+            assert spent == Decimal("0.04")
     finally:
         with session_scope() as session:
             session.query(Tenant).filter_by(id=tenant_id).delete()

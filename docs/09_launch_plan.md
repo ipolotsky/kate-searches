@@ -132,7 +132,7 @@ Milestone M6.3, зависит от M6.2 (trial-ending, budget-threshold).
 - M6.1 launch-blockers (1, 2, 3, 7, 6, 12, 4, 5, 10, 11) — сделано. Миграция `0007_reliability.sql`.
 - M6.2 биллинг + триал — сделано. Миграция `0008_billing.sql`. Stripe в web (config/checkout/portal/webhook), Python trial-энфорс (period 'trial', score-gate, expiry, drafts/sources лимиты), UI (billing-страница, TEST MODE баннер, trial-meter, start-trial баннер), card-first (регистрация с бюджетом 0).
 - M6.3 Resend — сделано. Миграция `0009_email.sql`. Python email-модуль (`app/email`), 4 уведомления, Celery-очередь `emails` + beat-скан, digest после `finalize_run`, вебхук/unsubscribe (Svix-проверка в Python, web-прокси).
-- M6.4 (находки 8, 9, 13) — отложено.
+- M6.4 (находки 8, 9, 13) — сделано. #8 sitemap: курсор `last_published_at` не двигается при `child_fetch_error` (записи упавшего ребёнка дочитываются в следующий прогон). #9 llm/client: hook `completion:response` копит все попытки Instructor, стоимость/токены суммируются (hard-cap больше не недосчитывает ретраи). #13 posts: `updatePostStatus` через compare-and-swap (`.eq("status", from)` + проверка affected-row, при 0 — `conflict`).
 
 Проверено локально: API 154 unit-теста + ruff; web tsc + lint + 68 тестов. Integration-тесты (нужен Supabase-стек) и живой e2e — на этапе деплоя.
 

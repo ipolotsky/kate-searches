@@ -157,6 +157,34 @@ def test_sitemap_fetch_follows_index_and_advances_cursor(monkeypatch) -> None:
     assert result.state["last_published_at"] == datetime(2026, 7, 4, 10, tzinfo=UTC).isoformat()
 
 
+_INDEX_MULTI = b"""<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://news.test/good.xml</loc></sitemap>
+  <sitemap><loc>https://news.test/bad.xml</loc></sitemap>
+</sitemapindex>"""
+
+
+def test_sitemap_fetch_does_not_advance_cursor_when_child_fails(monkeypatch) -> None:
+    # Падение дочернего sitemap не должно двигать курсор вперёд: его записи ещё не собраны,
+    # иначе в следующем прогоне они отсеклись бы как «старые» и потерялись бы навсегда.
+    def fake_download(url: str) -> bytes:
+        if url.endswith("index.xml"):
+            return _INDEX_MULTI
+        if url.endswith("good.xml"):
+            return _URLSET
+        raise RuntimeError("child sitemap is down")
+
+    monkeypatch.setattr("app.adapters.sitemap._download", fake_download)
+    adapter = SitemapAdapter()
+    source = {**_SOURCE, "url": "https://news.test/index.xml"}
+    result = adapter.fetch(FetchRequest(source=source, state={}))
+
+    # записи живого ребёнка собраны, но курсор НЕ продвинут (остался пустым) и есть предупреждение.
+    assert {item["loc"] for item in result.items} == {"https://news.test/a", "https://news.test/b"}
+    assert "child_fetch_error" in result.warnings
+    assert result.state["last_published_at"] is None
+
+
 def test_sitemap_fetch_incremental_skips_old(monkeypatch) -> None:
     monkeypatch.setattr("app.adapters.sitemap._download", lambda url: _URLSET)
     adapter = SitemapAdapter()
