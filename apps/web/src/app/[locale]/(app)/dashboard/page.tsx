@@ -1,14 +1,18 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { ArticleFeed } from "@/components/dashboard/ArticleFeed";
 import { DraftsBoard } from "@/components/dashboard/DraftsBoard";
 import { RunPipelineButton } from "@/components/dashboard/RunPipelineButton";
 import { ScoredCandidates } from "@/components/dashboard/ScoredCandidates";
 import { getUserAndTenant } from "@/lib/auth/tenant";
 import { createClient } from "@/lib/supabase/server";
 import {
+  type ArticleStatus,
   type CandidateView,
+  type FeedItemView,
   type PostStatus,
   type PostView,
   type SourceRef,
+  parseRelevance,
   priorityOf,
 } from "@/lib/types";
 
@@ -47,6 +51,17 @@ export default async function DashboardPage({
   }
   const candidateRows = candidatesResult.data ?? [];
 
+  const feedResult = await supabase
+    .from("articles")
+    .select("id, url, title, status, relevance_score, relevance, source_id")
+    .not("relevance_score", "is", null)
+    .order("published_at", { ascending: false, nullsFirst: false })
+    .limit(60);
+  if (feedResult.error != null) {
+    throw new Error(feedResult.error.message);
+  }
+  const feedRows = feedResult.data ?? [];
+
   const draftedArticleIds = new Set(
     postRows.map((x) => x.article_id).filter((x): x is string => x != null),
   );
@@ -56,6 +71,7 @@ export default async function DashboardPage({
       [
         ...postRows.map((x) => oneOf(x.articles)?.source_id),
         ...candidateRows.map((x) => x.source_id),
+        ...feedRows.map((x) => x.source_id),
       ].filter((x): x is string => x != null),
     ),
   ];
@@ -93,6 +109,21 @@ export default async function DashboardPage({
       source: row.source_id != null ? (sourceById.get(row.source_id) ?? null) : null,
     }));
 
+  const feed: FeedItemView[] = feedRows.map((row) => {
+    const relevance = parseRelevance(row.relevance);
+    return {
+      id: row.id,
+      title: row.title ?? "",
+      url: row.url,
+      status: row.status as ArticleStatus,
+      score: row.relevance_score,
+      priority: priorityOf(row.relevance),
+      passed: row.status !== "filtered_out",
+      reason: relevance?.decision_summary ?? "",
+      source: row.source_id != null ? (sourceById.get(row.source_id) ?? null) : null,
+    };
+  });
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -105,6 +136,7 @@ export default async function DashboardPage({
 
       <ScoredCandidates candidates={candidates} locale={locale} />
       <DraftsBoard posts={posts} locale={locale} />
+      <ArticleFeed items={feed} locale={locale} />
     </div>
   );
 }

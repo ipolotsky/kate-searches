@@ -1,8 +1,8 @@
 # Конфиг LiteLLM proxy. Роутинг моделей по стадиям пайплайна + трейс в Langfuse.
 model_list:
-  - model_name: gemini/gemini-2.0-flash-lite
+  - model_name: gemini/gemini-flash-lite-latest
     litellm_params:
-      model: gemini/gemini-2.0-flash-lite
+      model: gemini/gemini-flash-lite-latest
       api_key: os.environ/GEMINI_API_KEY
   - model_name: openai/gpt-5-mini
     litellm_params:

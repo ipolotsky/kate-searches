@@ -69,6 +69,12 @@
       "queued": "Pipeline run queued",
       "alreadyRan": "Today's run has already been triggered.",
       "failed": "Could not start the run"
+    },
+    "feed": {
+      "title": "Scoring feed",
+      "empty": "Nothing scored yet. Articles appear here after a run.",
+      "passed": "Passed",
+      "filtered": "Filtered out"
     }
   },
   "post": {

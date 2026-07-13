@@ -90,6 +90,20 @@ export interface CandidateView {
   source: SourceRef | null;
 }
 
+// View-model строки «потока скоринга»: любая статья, прошедшая скоринг (scored/filtered_out/drafted),
+// со скором, приоритетом, исходом гейта (passed) и человекочитаемой причиной (decision_summary).
+export interface FeedItemView {
+  id: string;
+  title: string;
+  url: string;
+  status: ArticleStatus;
+  score: number | null;
+  priority: Priority | null;
+  passed: boolean;
+  reason: string;
+  source: SourceRef | null;
+}
+
 // View-model источника для настроек (строка + здоровье).
 export interface SourceView {
   id: string;

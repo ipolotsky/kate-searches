@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     # Двухуровневый роутинг моделей (главный рычаг юнит-экономики)
-    llm_model_score: str = "gemini/gemini-2.0-flash-lite"
+    llm_model_score: str = "gemini/gemini-flash-lite-latest"
     llm_model_draft: str = "openai/gpt-5-mini"
 
     # Лимит вывода стадии draft. DraftPost (тело ~2k + faq + json_ld + suggested_titles) не влезает
