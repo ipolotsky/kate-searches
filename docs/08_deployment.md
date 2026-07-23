@@ -1,6 +1,14 @@
+---
+type: Deployment Spec
+title: Деплой и инфраструктура
+description: Сборка образов в GitHub Actions → GHCR, zero-downtime rollout на VM через docker compose, общий Traefik с TLS, изоляция prod/stage и обращение с секретами.
+tags: [deploy, ci-cd, infra, traefik, secrets]
+timestamp: 2026-07-09T23:39:18+04:00
+---
+
 # 08 — Спек деплоя и инфраструктуры
 
-> Источник истины по тому, как KateSearches собирается, катится и живёт в проде и на staging. Опорные файлы в репозитории: `deploy/` (compose.yml, deploy.sh, traefik/, env.example, README.md), `.github/workflows/` (ci.yml, deploy-staging.yml, deploy-prod.yml), `apps/web/Dockerfile`, `services/api/Dockerfile`. Опорные доки: `03_architecture.md` (стек), `07_m1_ingestion_plan.md` (Celery-конвейер, который катится как worker/beat).
+> Источник истины по тому, как KateSearches собирается, катится и живёт в проде и на staging. Опорные файлы в репозитории: `deploy/` (compose.yml, deploy.sh, traefik/, env.example, README.md), `.github/workflows/` (ci.yml, deploy-staging.yml, deploy-prod.yml), `apps/web/Dockerfile`, `services/api/Dockerfile`. Опорные доки: [03_architecture.md](/03_architecture.md) (стек), [07_m1_ingestion_plan.md](/07_m1_ingestion_plan.md) (Celery-конвейер, который катится как worker/beat).
 
 ## 1. Что и куда деплоим
 

@@ -1,3 +1,11 @@
+---
+type: Architecture
+title: Техническая архитектура
+description: "Тех-архитектура KateSearches: стек с обоснованием, схема данных, адаптеры источников, AI-пайплайн, cost-metering и инфраструктура."
+tags: [architecture, stack, schema, adapters]
+timestamp: 2026-07-04T17:53:54+04:00
+---
+
 # 03 — Техническая архитектура
 
 > Решения зафиксированы: Next.js + Flowbite React (фронт) + FastAPI (AI/скрапинг), Supabase (Postgres+Auth+RLS), глобальная юрисдикция, биллинг после MVP (метеринг с D1).
