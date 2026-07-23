@@ -1,3 +1,11 @@
+---
+type: Handoff
+title: HANDOFF — снимок состояния и инженерный лог
+description: "Актуальный снимок состояния прода/stage и инженерный лог вех M0–M6.4: что готово, что развёрнуто, что нужно от владельца и как запускать."
+tags: [handoff, status, milestones, operations]
+timestamp: 2026-07-13T09:53:27+04:00
+---
+
 # HANDOFF
 
 Актуальный снимок состояния: что готово, что развёрнуто, что нужно от владельца, как запускать. Инженерный лог вех M0-M6.4 — ниже; текущий статус прода — в разделе сразу под этим.
@@ -6,7 +14,7 @@
 
 ## Актуальный статус: прод и stage развёрнуты (обновлено 2026-07-12)
 
-Прод и stage работают на одной VM (GCP, Debian 13, `35.223.85.130`) под CI/CD. Полный спек инфраструктуры и гочи запуска — `docs/08_deployment.md`.
+Прод и stage работают на одной VM (GCP, Debian 13, `35.223.85.130`) под CI/CD. Полный спек инфраструктуры и гочи запуска — [08_deployment.md](/08_deployment.md).
 
 **Окружения (оба live, TLS Let's Encrypt, все контейнеры healthy):**
 - Прод — https://taskyou.me, Supabase-проект `bkwyqfqytisnrdxfieha`.
@@ -158,7 +166,7 @@ Push и PR - обычным флоу (репо `https://github.com/ipolotsky/kat
 
 ## Статус M1 (ingestion) — готово
 
-Веха M1 реализована целиком по плану `docs/07_m1_ingestion_plan.md` (все 15 задач T1-T15). Полный вертикальный срез `fetch -> normalize -> novelty -> persist -> extract -> dedup` работает, AC-1 доказан интеграционным тестом на реальном Supabase.
+Веха M1 реализована целиком по плану [07_m1_ingestion_plan.md](/07_m1_ingestion_plan.md) (все 15 задач T1-T15). Полный вертикальный срез `fetch -> normalize -> novelty -> persist -> extract -> dedup` работает, AC-1 доказан интеграционным тестом на реальном Supabase.
 
 Что сделано:
 - **Контракт адаптера** (`app/adapters/base.py`, `cursors.py`, `registry.py`): `SourceAdapter` Protocol с декларативными `AdapterCapabilities`/`config_model`, типизированные курсоры (ETag/Timestamp/SinceId/Page), `AdapterRegistry` с `register`/`describe()` (готовое API для M4-формы источника). `Document.body_is_complete`.
@@ -287,7 +295,7 @@ curl -XPOST localhost:8000/internal/pipeline/generate -d '{"tenant_id":"<uuid>"}
 - **Отдельный `pipeline_run` для генерации** (ledger-строка «generation run») - если понадобится наблюдаемость активности генерации сверх `posts`+`ai_usage`. Сейчас стоимость атрибутируется прогону, что заскорил статью.
 - **Семантика `pipeline_runs.scored`**: после `scored -> drafted` счётчик `scored` прогона остаётся резидуальным (консистентно с уже резидуальным `extracted` после скоринга); `drafted` наполняется через `refresh_drafted`.
 
-См. также `docs/04_mvp_spec.md` §7 и матрицу расширяемости `docs/07_m1_ingestion_plan.md` §10.
+См. также [04_mvp_spec.md](/04_mvp_spec.md) §7 и матрицу расширяемости [07_m1_ingestion_plan.md](/07_m1_ingestion_plan.md) §10.
 
 ## Статус M4 (UI: дашборд, редактор, настройки, фидбэк) — готово
 
@@ -420,7 +428,7 @@ Full-body RSS (extract не нужен): Hypebeast `https://hypebeast.com/feed`,
 
 ## Launch-подготовка: ревью + UX + launch-blockers + биллинг/триал + email — готово
 
-Параллельный трек подготовки к боевому запуску (не путать с «M6 — пилот LOOTON» выше — это про данные пилота). Детальный план, решения и pre-deploy чеклист — `docs/09_launch_plan.md`. В плане работы пронумерованы M6.0-M6.3. Проверено локально: **API 154 unit-теста + ruff (lint+format), web tsc + lint + 68 тестов**. Миграции: `0007_reliability.sql`, `0008_billing.sql`, `0009_email.sql`. Integration-тесты (нужен Supabase-стек) и живой e2e (Stripe/Resend с ключами) — на этапе деплоя.
+Параллельный трек подготовки к боевому запуску (не путать с «M6 — пилот LOOTON» выше — это про данные пилота). Детальный план, решения и pre-deploy чеклист — [09_launch_plan.md](/09_launch_plan.md). В плане работы пронумерованы M6.0-M6.3. Проверено локально: **API 154 unit-теста + ruff (lint+format), web tsc + lint + 68 тестов**. Миграции: `0007_reliability.sql`, `0008_billing.sql`, `0009_email.sql`. Integration-тесты (нужен Supabase-стек) и живой e2e (Stripe/Resend с ключами) — на этапе деплоя.
 
 ### Независимый ревью (7 измерений, каждая находка адверсариально верифицирована по коду)
 Прогнан multi-agent ревью (бюджет/метеринг, RLS/authz, ingestion, scoring/generation, SSRF/fetch, web-actions, deploy/CI). **13 подтверждённых находок** (1 отклонена верификатором). Чисто (находок нет): RLS/мультитенант-изоляция, платформенные админы, chord-барьеры ingestion, атомарный claim генерации, provisioning тенанта. Launch-blockers из ревью починены в M6.1, остаток корректности (#8/#9/#13) отложен в M6.4.

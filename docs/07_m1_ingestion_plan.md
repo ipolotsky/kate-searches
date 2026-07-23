@@ -1,12 +1,20 @@
+---
+type: Milestone Plan
+title: План вехи M1 — Ingestion
+description: "Детальный план вехи M1: контракт адаптера, двухфазный конвейер на Celery, дедуп/новизна, миграция 0002 и декомпозиция задач T1–T15 с матрицей расширяемости."
+tags: [m1, ingestion, adapters, celery, dedup]
+timestamp: 2026-07-04T17:53:54+04:00
+---
+
 # 07 — План вехи M1: Ingestion
 
-> Детальный декомпозированный план сбора и подготовки статей. Проектировался с прицелом на то, чтобы ни один пункт будущего роадмапа (M2-M6, фазы 1.5/2/3, мультиязычность) не упирался в блокер, заложенный сейчас. Опорные доки: `03_architecture.md` (стек, адаптеры, cost-metering), `04_mvp_spec.md` §7 (скоуп и acceptance), `05_ai_pipeline_prompts.md` (шов к M2).
+> Детальный декомпозированный план сбора и подготовки статей. Проектировался с прицелом на то, чтобы ни один пункт будущего роадмапа (M2-M6, фазы 1.5/2/3, мультиязычность) не упирался в блокер, заложенный сейчас. Опорные доки: [03_architecture.md](/03_architecture.md) (стек, адаптеры, cost-metering), [04_mvp_spec.md](/04_mvp_spec.md) §7 (скоуп и acceptance), [05_ai_pipeline_prompts.md](/05_ai_pipeline_prompts.md) (шов к M2).
 
 ## 1. Что делает M1 и критерий готовности
 
 M1 - вертикальный срез конвейера до скоринга: `fetch -> normalize -> novelty -> persist -> extract -> dedup`. На выходе таблица `articles` наполняется чистыми, дедуплицированными, свежими статьями со статусом `extracted`, готовыми к скорингу M2. Плюс синхронный тест источника для UI.
 
-Формальный критерий (AC-1 из `04_mvp_spec.md`):
+Формальный критерий (AC-1 из [04_mvp_spec.md](/04_mvp_spec.md)):
 1. Конвейер не создаёт статьи с `published_at` старше «сегодня» по таймзоне тенанта.
 2. Дубли по одному `canonical_url` не создаются дважды.
 
@@ -110,7 +118,7 @@ Rate-limit и robots декларативны и переиспользуемы:
 
 ## 5. Экстракция
 
-Extract - отдельная не-LLM стадия (LLM-обогащение `ExtractedArticle` объединено со скорингом в M2, см. `05_ai_pipeline_prompts.md`). Цель: чистое полное тело в markdown, язык, медиа.
+Extract - отдельная не-LLM стадия (LLM-обогащение `ExtractedArticle` объединено со скорингом в M2, см. [05_ai_pipeline_prompts.md](/05_ai_pipeline_prompts.md)). Цель: чистое полное тело в markdown, язык, медиа.
 
 trafilatura (уже в deps): `extract(html, output_format="markdown", with_metadata=True, favor_precision=True, include_tables=True)` -> тело плюс author/date/language/image. Одна точка trafilatura, переиспользуется RSS-гидратацией, sitemap- и scraper-адаптерами. Язык: `metadata.language`, fallback `source.config.language`, иначе `None`.
 
@@ -118,7 +126,7 @@ trafilatura (уже в deps): `extract(html, output_format="markdown", with_meta
 
 Политика полного тела: гидратировать если `not body_is_complete or len(body) < порога` (около 500-600 символов). `body_is_complete` выставляет адаптер, а не эвристика длины - иначе соцсети фазы 2 (короткое авторитетное тело) ложно уходят на web-fetch. Стадия extract работает со строкой `articles` по id, поэтому `body_is_complete` читается из `articles.metadata` (куда его положил `upsert_document`), а не из in-memory `Document`. Если извлечение упало (paywall, анти-бот) - деградировать на RSS-summary как тело, `metadata.extraction_failed=true`, статус остаётся `new` (строку не теряем). `content_hash` пересчитывается по финальному телу.
 
-Этика (`03_architecture.md` §8): robots.txt до fetch (`capabilities.respects_robots`), identifiable UA из settings, per-host throttle, crawl-delay. Тело - для внутреннего пайплайна, выход M3 трансформирует, а не копирует.
+Этика ([03_architecture.md](/03_architecture.md) §8): robots.txt до fetch (`capabilities.respects_robots`), identifiable UA из settings, per-host throttle, crawl-delay. Тело - для внутреннего пайплайна, выход M3 трансформирует, а не копирует.
 
 Учёт стоимости: на каждый платный fetch - строка `ai_usage(stage='extract', model=провайдер, cost_usd=оценка кредита, pipeline_run_id)`. `stage='extract'` уже в check-констрейнте `ai_usage` из `0001` - миграция для этого не нужна.
 
@@ -346,7 +354,7 @@ Firecrawl/BrightData в тесте запрещены - не жечь деньг
 5. Волна 4: **T12** (топология - ядро, сходятся все ветки).
 6. Волна 5: **T13** (эндпоинты), **T14** (инфра/compose), **T15** (E2E AC-1).
 
-Оценка совпадает с ориентиром `04_mvp_spec.md` §7 для M1 (1.5-2 недели на 1-2 инженеров): критический путь T1 -> T5 -> T7 -> T12 -> T15.
+Оценка совпадает с ориентиром [04_mvp_spec.md](/04_mvp_spec.md) §7 для M1 (1.5-2 недели на 1-2 инженеров): критический путь T1 -> T5 -> T7 -> T12 -> T15.
 
 ## 14. Definition of Done вехи
 
