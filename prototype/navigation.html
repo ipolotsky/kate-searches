@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KateSearches — Navigation Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
+  <style>
+    :root { --color-bg: #111827; --color-surface: #1f2937; --color-border: #374151; --color-text: #f9fafb; --color-muted: #9ca3af; }
+    html.light { --color-bg: #f9fafb; --color-surface: #ffffff; --color-border: #e5e7eb; --color-text: #111827; --color-muted: #6b7280; }
+    body { background: var(--color-bg); color: var(--color-text); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; }
+    .sidebar-link.active { background: rgba(37,99,235,0.1); color: #3b82f6; border-right: 3px solid #3b82f6; }
+    .sidebar-link:hover { background: rgba(55,65,81,0.5); }
+
+    /* Mobile drawer animation */
+    .sidebar-overlay { transition: opacity 0.2s ease; }
+    .sidebar-drawer { transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+    @media (max-width: 767px) {
+      .sidebar-overlay.active { display: block; opacity: 1; }
+      .sidebar-drawer.active { transform: translateX(0); }
+    }
+
+    /* Notification badge pulse */
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .notif-dot { animation: pulse-dot 2s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+  <!-- ===== NAVBAR (visible on all screen sizes) ===== -->
+  <nav class="sticky top-0 z-40 border-b" style="border-color:var(--color-border);background:var(--color-surface);">
+    <div class="mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4">
+      <!-- Left: hamburger + brand -->
+      <div class="flex items-center gap-3">
+        <!-- Hamburger — visible only on mobile/tablet -->
+        <button id="hamburgerBtn" class="flex md:hidden p-2 rounded-lg hover:bg-gray-700/50" aria-label="Open sidebar menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+        <span class="text-lg font-bold" style="color:var(--color-text);">KateSearches</span>
+      </div>
+
+      <!-- Right: theme toggle, locale, user -->
+      <div class="flex items-center gap-2">
+        <button id="darkToggle" class="p-2 rounded-lg hover:bg-gray-700/50" aria-label="Toggle theme">
+          <svg id="moonIcon" class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+          </svg>
+          <svg id="sunIcon" class="w-5 h-5 text-gray-600 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+          </svg>
+        </button>
+        <div class="relative group">
+          <button class="px-2 sm:px-3 py-1.5 text-sm rounded-lg border flex items-center gap-1" style="border-color:var(--color-border);color:var(--color-muted);">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m0 4v2m0 4v2m5-10h4a1 1 0 011 1v12a1 1 0 01-1 1h-4m-6 0H4a1 1 0 01-1-1V6a1 1 0 011-1h4"/></svg>
+            EN
+          </button>
+        </div>
+        <!-- User avatar + dropdown indicator -->
+        <div class="relative">
+          <button class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white ring-2 ring-transparent hover:ring-blue-400 transition-all">
+            K
+          </button>
+          <!-- Online indicator dot -->
+          <span class="notif-dot absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-gray-900 bg-green-500"></span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="mx-auto flex max-w-screen-2xl min-h-[calc(100vh-3.5rem)]">
+    <!-- ===== SIDEBAR (desktop: static, mobile: drawer) ===== -->
+    <!--
+      На десктопе (>767px): сайдбар всегда виден, статичный, часть потока (md:relative md:translate-x-0 md:block).
+      На мобильном: скрыт (fixed, -translate-x-full), открывается хамбургером как drawer.
+    -->
+    <aside id="sidebar"
+      class="sidebar-drawer fixed inset-y-0 left-0 z-50 w-60 -translate-x-full border-r md:relative md:translate-x-0 md:block shrink-0"
+      style="background:var(--color-surface);border-color:var(--color-border);padding-top:3.5rem;">
+      
+      <!-- Mobile close button -->
+      <button id="closeSidebarBtn" class="md:hidden absolute top-2 right-2 p-1.5 rounded-lg hover:bg-gray-700/50">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+
+      <!-- Section: Main -->
+      <div class="px-3 pt-6 pb-2">
+        <p class="px-3 text-xs font-semibold uppercase tracking-widest" style="color:var(--color-muted);">Main</p>
+      </div>
+      <nav class="flex flex-col gap-0.5 px-3">
+        <a href="#" class="sidebar-link active flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-text);">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          <span>Usage</span>
+        </a>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          <span>Billing</span>
+        </a>
+      </nav>
+
+      <!-- Divider -->
+      <div class="my-4 mx-3 border-t" style="border-color:var(--color-border);"></div>
+
+      <!-- Section: Content -->
+      <div class="px-3 pb-2">
+        <p class="px-3 text-xs font-semibold uppercase tracking-widest" style="color:var(--color-muted);">Content</p>
+      </div>
+      <nav class="flex flex-col gap-0.5 px-3">
+        <!-- Sources with count badge -->
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          <span class="flex-1">Sources</span>
+          <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(37,99,235,0.15);color:#3b82f6;">4</span>
+        </a>
+        <!-- Settings (active) -->
+        <a href="#" class="sidebar-link active flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-text);">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+
+      <!-- Divider -->
+      <div class="my-4 mx-3 border-t" style="border-color:var(--color-border);"></div>
+
+      <!-- Section: Admin (conditional, only for platform admins) -->
+      <div class="px-3 pb-2">
+        <p class="px-3 text-xs font-semibold uppercase tracking-widest" style="color:var(--color-muted);">Admin</p>
+      </div>
+      <nav class="flex flex-col gap-0.5 px-3">
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          <span>Tenants</span>
+        </a>
+      </nav>
+
+      <!-- Bottom: user info on mobile -->
+      <div class="md:hidden absolute bottom-0 left-0 right-0 border-t p-4" style="border-color:var(--color-border);">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">K</div>
+          <div>
+            <p class="text-sm font-medium" style="color:var(--color-text);">Kate's Boutique</p>
+            <p class="text-xs" style="color:var(--color-muted);">kate@looton.com</p>
+          </div>
+        </div>
+        <button class="mt-3 w-full rounded-lg border px-3 py-2 text-sm text-left" style="border-color:var(--color-border);color:var(--color-muted);">
+          Sign out
+        </button>
+      </div>
+    </aside>
+
+    <!-- ===== SIDEBAR OVERLAY (mobile only) ===== -->
+    <div id="sidebarOverlay" class="sidebar-overlay fixed inset-0 z-40 hidden bg-black/60"></div>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10">
+      <!-- Content area — пояснительный текст на главной странице навигации -->
+      <div class="mx-auto max-w-3xl">
+        <h1 class="text-2xl font-bold mb-2" style="color:var(--color-text);">Navigation Prototype</h1>
+        <p class="mb-8 text-sm" style="color:var(--color-muted);">Three improvements demonstrated on this page:</p>
+
+        <div class="grid gap-6 sm:grid-cols-3">
+          <div class="card p-5">
+            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600/15">
+              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </div>
+            <h2 class="text-base font-semibold mb-1" style="color:var(--color-text);">Mobile drawer</h2>
+            <p class="text-sm" style="color:var(--color-muted);">Hamburger menu на мобильных. Сайдбар выезжает как overlay, overlay — затемняет фон. Закрывается по кнопке, по тапу на overlay, или свайпом.</p>
+            <p class="mt-2 text-xs" style="color:#3b82f6;">Resize browser to &lt;768px → tap ☰</p>
+          </div>
+
+          <div class="card p-5">
+            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600/15">
+              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+            </div>
+            <h2 class="text-base font-semibold mb-1" style="color:var(--color-text);">Sections &amp; badges</h2>
+            <p class="text-sm" style="color:var(--color-muted);">Сайдбар разбит на секции (Main / Content / Admin) с заголовками. У Sources и Dashboard — badge с количеством. Разделители между группами.</p>
+          </div>
+
+          <div class="card p-5">
+            <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600/15">
+              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+            </div>
+            <h2 class="text-base font-semibold mb-1" style="color:var(--color-text);">Settings → Sources</h2>
+            <p class="text-sm" style="color:var(--color-muted);">Settings и Sources — отдельные пункты. Settings ведёт на страницу с табами (Brand, Sources, Voice, General). Sources — прямой доступ к управлению источниками.</p>
+          </div>
+        </div>
+
+        <!-- Links to other prototypes -->
+        <div class="mt-10 card p-5">
+          <h2 class="text-base font-semibold mb-3" style="color:var(--color-text);">Explore other prototypes</h2>
+          <div class="flex flex-wrap gap-3">
+            <a href="dashboard.html" class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+              Dashboard prototype
+            </a>
+            <a href="settings.html" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium" style="border-color:var(--color-border);color:var(--color-text);">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+              Settings prototype
+            </a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ===== THEME TOGGLE =====
+    const html = document.documentElement;
+    const sun = document.getElementById('sunIcon');
+    const moon = document.getElementById('moonIcon');
+
+    function setTheme(dark) {
+      if (dark) {
+        html.classList.remove('light'); html.classList.add('dark');
+        sun.style.display = 'none'; moon.style.display = 'block';
+      } else {
+        html.classList.remove('dark'); html.classList.add('light');
+        moon.style.display = 'none'; sun.style.display = 'block';
+      }
+    }
+    document.getElementById('darkToggle').addEventListener('click', () => {
+      setTheme(!html.classList.contains('dark'));
+    });
+    if (!html.classList.contains('dark') && !html.classList.contains('light')) {
+      html.classList.add('dark');
+    }
+
+    // ===== MOBILE DRAWER =====
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const hamburger = document.getElementById('hamburgerBtn');
+    const closeBtn = document.getElementById('closeSidebarBtn');
+
+    function openDrawer() {
+      sidebar.classList.add('active');
+      sidebar.style.transform = 'translateX(0)';
+      overlay.classList.add('active');
+      overlay.style.display = 'block';
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeDrawer() {
+      sidebar.classList.remove('active');
+      sidebar.style.transform = '';
+      overlay.classList.remove('active');
+      overlay.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    hamburger.addEventListener('click', openDrawer);
+    closeBtn.addEventListener('click', closeDrawer);
+    overlay.addEventListener('click', closeDrawer);
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && sidebar.classList.contains('active')) {
+        closeDrawer();
+      }
+    });
+
+    // ===== DEMO: sidebar links show active state =====
+    document.querySelectorAll('.sidebar-link').forEach(link => {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.sidebar-link').forEach(l => {
+          l.classList.remove('active');
+          l.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim() || '#9ca3af';
+        });
+        this.classList.add('active');
+        this.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-text').trim() || '#f9fafb';
+        // Close drawer on mobile after selection
+        if (window.innerWidth < 768) {
+          closeDrawer();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

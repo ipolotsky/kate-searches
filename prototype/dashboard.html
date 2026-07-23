@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KateSearches — Dashboard Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
+  <style>
+    :root { --color-bg: #111827; --color-surface: #1f2937; --color-border: #374151; --color-text: #f9fafb; --color-muted: #9ca3af; }
+    html.light { --color-bg: #f9fafb; --color-surface: #ffffff; --color-border: #e5e7eb; --color-text: #111827; --color-muted: #6b7280; }
+    body { background: var(--color-bg); color: var(--color-text); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; }
+    .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+    html:not(.dark) .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+    .search-input { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); }
+    .search-input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
+    .metric-card { transition: transform 0.15s ease; }
+    .metric-card:hover { transform: translateY(-2px); }
+    .sidebar-link.active { background: rgba(37,99,235,0.1); color: #3b82f6; border-right: 3px solid #3b82f6; }
+    .badge-score { display: inline-flex; align-items: center; padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .badge-priority { display: inline-flex; align-items: center; padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+    .filter-chip { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.8rem; cursor: pointer; border: 1px solid var(--color-border); color: var(--color-muted); transition: all 0.15s; }
+    .filter-chip.active { background: #2563eb; color: white; border-color: #2563eb; }
+    html.light .filter-chip.active { background: #2563eb; color: white; border-color: #2563eb; }
+    @media (max-width: 767px) { .sidebar-overlay.active { display: block; } .sidebar-drawer.active { transform: translateX(0); } }
+  </style>
+</head>
+<body>
+  <!-- ===== NAVBAR ===== -->
+  <nav class="sticky top-0 z-30 border-b" style="border-color:var(--color-border);background:var(--color-surface);">
+    <div class="mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4">
+      <div class="flex items-center gap-3">
+        <button id="mobileMenuBtn" class="block md:hidden p-2 rounded-lg hover:bg-gray-700/50" aria-label="Open menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="text-lg font-bold" style="color:var(--color-text);">KateSearches</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="darkToggle" class="p-2 rounded-lg hover:bg-gray-700/50" aria-label="Toggle theme">
+          <svg id="sunIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <svg id="moonIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+        <div class="hidden sm:flex items-center gap-2">
+          <button class="px-3 py-1.5 text-sm rounded-lg border" style="border-color:var(--color-border);color:var(--color-muted);">EN</button>
+        </div>
+        <div class="relative">
+          <button id="userMenuBtn" class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">K</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="mx-auto flex max-w-screen-2xl">
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-60 -translate-x-full border-r transition-transform duration-200 md:relative md:translate-x-0 md:block shrink-0" style="background:var(--color-surface);border-color:var(--color-border);padding-top:3.5rem;">
+      <nav class="flex flex-col gap-1 p-4 pt-6">
+        <a href="#" class="sidebar-link active flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-text);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Dashboard
+        </a>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Usage
+        </a>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          Billing
+        </a>
+        <div class="my-2 border-t" style="border-color:var(--color-border);"></div>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Sources
+        </a>
+        <a href="settings.html" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Settings
+        </a>
+      </nav>
+    </aside>
+
+    <!-- ===== SIDEBAR OVERLAY (mobile) ===== -->
+    <div id="sidebarOverlay" class="sidebar-overlay fixed inset-0 z-30 hidden bg-black/50"></div>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10">
+      <!-- Header -->
+      <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 class="text-2xl font-bold" style="color:var(--color-text);">Drafts</h1>
+          <p class="text-sm" style="color:var(--color-muted);">Fresh, relevant stories — already drafted for you</p>
+        </div>
+        <button class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Run pipeline
+        </button>
+      </div>
+
+      <!-- ===== METRICS BAR ===== -->
+      <div class="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="metric-card card p-4">
+          <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--color-muted);">Scored today</p>
+          <p class="mt-1 text-2xl font-bold" style="color:var(--color-text);">24</p>
+          <p class="mt-0.5 text-xs" style="color:#22c55e;">+12% vs yesterday</p>
+        </div>
+        <div class="metric-card card p-4">
+          <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--color-muted);">Drafted this week</p>
+          <p class="mt-1 text-2xl font-bold" style="color:var(--color-text);">18</p>
+          <p class="mt-0.5 text-xs" style="color:var(--color-muted);">3 pending review</p>
+        </div>
+        <div class="metric-card card p-4">
+          <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--color-muted);">Avg relevance</p>
+          <p class="mt-1 text-2xl font-bold" style="color:var(--color-text);">76%</p>
+          <p class="mt-0.5 text-xs" style="color:#22c55e;">+5% this month</p>
+        </div>
+        <div class="metric-card card p-4">
+          <p class="text-xs font-medium uppercase tracking-wider" style="color:var(--color-muted);">Budget used</p>
+          <p class="mt-1 text-2xl font-bold" style="color:var(--color-text);">42%</p>
+          <div class="mt-2 h-1.5 w-full rounded-full" style="background:var(--color-border);">
+            <div class="h-full w-[42%] rounded-full bg-blue-500"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TABS ===== -->
+      <div class="mb-6 border-b" style="border-color:var(--color-border);">
+        <nav class="-mb-px flex gap-6">
+          <button class="tab-btn active pb-3 text-sm font-medium border-b-2" data-tab="drafts">Drafts <span class="ml-1.5 rounded-full px-2 py-0.5 text-xs" style="background:rgba(37,99,235,0.15);color:#3b82f6;">14</span></button>
+          <button class="tab-btn pb-3 text-sm font-medium border-b-2 border-transparent" style="color:var(--color-muted);" data-tab="scored">Scored <span class="ml-1.5 rounded-full px-2 py-0.5 text-xs" style="background:var(--color-border);color:var(--color-muted);">8</span></button>
+          <button class="tab-btn pb-3 text-sm font-medium border-b-2 border-transparent" style="color:var(--color-muted);" data-tab="feed">Feed <span class="ml-1.5 rounded-full px-2 py-0.5 text-xs" style="background:var(--color-border);color:var(--color-muted);">43</span></button>
+        </nav>
+      </div>
+
+      <!-- ===== TAB: DRAFTS ===== -->
+      <div id="tab-drafts" class="tab-content">
+        <!-- New section -->
+        <div class="card mb-4 overflow-hidden">
+          <button class="flex w-full items-center justify-between px-5 py-3.5 text-left" onclick="this.closest('.card').classList.toggle('collapsed')">
+            <div class="flex items-center gap-3">
+              <svg class="w-4 h-4 transition-transform" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              <span class="text-sm font-semibold" style="color:var(--color-text);">New</span>
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(37,99,235,0.15);color:#3b82f6;">8</span>
+            </div>
+          </button>
+          <div class="grid gap-3 px-5 pb-5 sm:grid-cols-2 xl:grid-cols-3">
+            <!-- Draft cards -->
+            <div class="card p-4">
+              <div class="mb-2 flex items-center gap-2">
+                <span class="badge-priority" style="background:rgba(239,68,68,0.15);color:#ef4444;">high</span>
+                <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">92</span>
+                <span class="ml-auto text-xs" style="color:var(--color-muted);">gpt-5-mini</span>
+              </div>
+              <p class="mb-1 text-sm font-medium leading-snug" style="color:var(--color-text);">LVMH Report Shows Resilient Luxury Demand Across Asia-Pacific Markets</p>
+              <p class="mb-3 text-xs" style="color:var(--color-muted);">via Reuters Business</p>
+              <div class="flex items-center gap-2">
+                <a href="#" class="rounded-lg px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors">Edit</a>
+                <button class="rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);">Take</button>
+                <button class="ml-auto rounded-lg p-1.5 hover:bg-gray-700/50">
+                  <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card p-4">
+              <div class="mb-2 flex items-center gap-2">
+                <span class="badge-priority" style="background:rgba(251,191,36,0.15);color:#eab308;">medium</span>
+                <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">85</span>
+                <span class="ml-auto text-xs" style="color:var(--color-muted);">gpt-5-mini</span>
+              </div>
+              <p class="mb-1 text-sm font-medium leading-snug" style="color:var(--color-text);">The Rise of Resale: How Second-Hand Luxury Is Reshaping Retail</p>
+              <p class="mb-3 text-xs" style="color:var(--color-muted);">via Vogue Business</p>
+              <div class="flex items-center gap-2">
+                <a href="#" class="rounded-lg px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors">Edit</a>
+                <button class="rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);">Take</button>
+                <button class="ml-auto rounded-lg p-1.5 hover:bg-gray-700/50">
+                  <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card p-4">
+              <div class="mb-2 flex items-center gap-2">
+                <span class="badge-priority" style="background:rgba(34,197,94,0.15);color:#22c55e;">low</span>
+                <span class="badge-score" style="background:rgba(251,191,36,0.15);color:#eab308;">73</span>
+                <span class="ml-auto text-xs" style="color:var(--color-muted);">gpt-5-mini</span>
+              </div>
+              <p class="mb-1 text-sm font-medium leading-snug" style="color:var(--color-text);">Prada Groups Expands Sustainable Sourcing Program to Third-Party Suppliers</p>
+              <p class="mb-3 text-xs" style="color:var(--color-muted););">via WWD</p>
+              <div class="flex items-center gap-2">
+                <a href="#" class="rounded-lg px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors">Edit</a>
+                <button class="rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);">Take</button>
+                <button class="ml-auto rounded-lg p-1.5 hover:bg-gray-700/50">
+                  <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card p-4">
+              <div class="mb-2 flex items-center gap-2">
+                <span class="badge-priority" style="background:rgba(239,68,68,0.15);color:#ef4444;">high</span>
+                <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">95</span>
+                <span class="ml-auto text-xs" style="color:var(--color-muted);">gpt-5-mini</span>
+              </div>
+              <p class="mb-1 text-sm font-medium leading-snug" style="color:var(--color-text);;">Gucci Partners with Vestiaire Collective on Circular Fashion Initiative</p>
+              <p class="mb-3 text-xs" style="color:var(--color-muted);">via The Business of Fashion</p>
+              <div class="flex items-center gap-2">
+                <a href="#" class="rounded-lg px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors">Edit</a>
+                <button class="rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);">Take</button>
+                <button class="ml-auto rounded-lg p-1.5 hover:bg-gray-700/50">
+                  <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- In progress section (collapsed) -->
+        <div class="card mb-4 overflow-hidden collapsed">
+          <button class="flex w-full items-center justify-between px-5 py-3.5 text-left" onclick="this.closest('.card').classList.toggle('collapsed')">
+            <div class="flex items-center gap-3">
+              <svg class="w-4 h-4 -rotate-90 transition-transform" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              <span class="text-sm font-semibold" style="color:var(--color-text);">In progress</span>
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(251,191,36,0.15);color:#eab308;">4</span>
+            </div>
+          </button>
+          <div class="grid gap-3 px-5 pb-5 sm:grid-cols-2 xl:grid-cols-3 hidden">
+            <!-- collapsed content -->
+            <div class="card p-4 opacity-60">
+              <div class="mb-2 flex items-center gap-2">
+                <span class="badge-priority" style="background:rgba(251,191,36,0.15);color:#eab308;">medium</span>
+                <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">80</span>
+              </div>
+              <p class="text-sm font-medium" style="color:var(--color-text);">Editing: Hermes Reports Record Annual Sales</p>
+            </div>
+          </div>
+        </div>
+        <!-- Published section (collapsed) -->
+        <div class="card mb-4 overflow-hidden collapsed">
+          <button class="flex w-full items-center justify-between px-5 py-3.5 text-left" onclick="this.closest('.card').classList.toggle('collapsed')">
+            <div class="flex items-center gap-3">
+              <svg class="w-4 h-4 -rotate-90 transition-transform" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              <span class="text-sm font-semibold" style="color:var(--color-text);">Published</span>
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(34,197,94,0.15);color:#22c55e;">2</span>
+            </div>
+          </button>
+          <div class="grid gap-3 px-5 pb-5 sm:grid-cols-2 xl:grid-cols-3 hidden"></div>
+        </div>
+      </div>
+
+      <!-- ===== TAB: SCORED ===== -->
+      <div id="tab-scored" class="tab-content hidden">
+        <div class="card mb-4 p-4">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold" style="color:var(--color-text);">Scored stories</h2>
+              <p class="text-sm" style="color:var(--color-muted);">Pick the ones worth drafting</p>
+            </div>
+            <button class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50" disabled>
+              Generate drafts (0)
+            </button>
+          </div>
+          <div class="mb-3 flex items-center gap-3">
+            <div class="relative flex-1">
+              <svg class="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input type="text" placeholder="Search scored stories..." class="search-input w-full rounded-lg py-2 pl-10 pr-4 text-sm">
+            </div>
+            <select class="search-input rounded-lg px-3 py-2 text-sm">
+              <option>All scores</option>
+              <option>90-100</option>
+              <option>70-89</option>
+              <option>Below 70</option>
+            </select>
+          </div>
+          <div class="mb-2 flex items-center gap-3 border-b pb-2" style="border-color:var(--color-border);">
+            <label class="flex items-center gap-2 text-sm" style="color:var(--color-muted);">
+              <input type="checkbox" class="rounded border-gray-600">
+              Select all
+            </label>
+            <span class="text-xs" style="color:var(--color-muted);">8 candidates</span>
+          </div>
+          <ul class="divide-y" style="border-color:var(--color-border);">
+            <li class="flex items-start gap-3 py-2.5">
+              <input type="checkbox" class="mt-1 rounded border-gray-600">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2 mb-0.5">
+                  <span class="badge-priority" style="background:rgba(239,68,68,0.15);color:#ef4444;">high</span>
+                  <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">94</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);">Chanel Tightens Control Over Distribution Network in APAC</a>
+                <span class="text-xs" style="color:var(--color-muted);">via Reuters</span>
+              </div>
+            </li>
+            <li class="flex items-start gap-3 py-2.5">
+              <input type="checkbox" class="mt-1 rounded border-gray-600">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2 mb-0.5">
+                  <span class="badge-priority" style="background:rgba(239,68,68,0.15);color:#ef4444;">high</span>
+                  <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">91</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);;">LVMH Q2 Earnings Beat Estimates on Strong Asian Demand</a>
+                <span class="text-xs" style="color:var(--color-muted);">via Financial Times</span>
+              </div>
+            </li>
+            <li class="flex items-start gap-3 py-2.5">
+              <input type="checkbox" class="mt-1 rounded border-gray-600">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2 mb-0.5">
+                  <span class="badge-priority" style="background:rgba(251,191,36,0.15);color:#eab308;">medium</span>
+                  <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">87</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);">Resale Market to Reach $350B by 2028, New Study Finds</a>
+                <span class="text-xs" style="color:var(--color-muted);">via Vogue Business</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ===== TAB: FEED ===== -->
+      <div id="tab-feed" class="tab-content hidden">
+        <div class="card p-4">
+          <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-semibold" style="color:var(--color-text);">Scoring feed</h2>
+              <p class="text-sm" style="color:var(--color-muted);">All scored articles — passed and filtered</p>
+            </div>
+          </div>
+          <!-- Search + Filters -->
+          <div class="mb-4 flex flex-wrap items-center gap-3">
+            <div class="relative flex-1 min-w-[200px]">
+              <svg class="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input type="text" placeholder="Search by title or URL..." class="search-input w-full rounded-lg py-2 pl-10 pr-4 text-sm">
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button class="filter-chip active" data-filter="all">All</button>
+              <button class="filter-chip" data-filter="passed">Passed</button>
+              <button class="filter-chip" data-filter="filtered">Filtered out</button>
+            </div>
+            <select class="search-input rounded-lg px-3 py-2 text-sm">
+              <option>Newest first</option>
+              <option>Highest score</option>
+              <option>Lowest score</option>
+            </select>
+          </div>
+          <!-- Feed list -->
+          <ul class="divide-y" style="border-color:var(--color-border);">
+            <li class="flex items-start gap-3 py-3">
+              <div class="min-w-0 flex-1">
+                <div class="mb-0.5 flex flex-wrap items-center gap-2">
+                  <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">94</span>
+                  <span class="badge-priority" style="background:rgba(239,68,68,0.15);color:#ef4444;">high</span>
+                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-400">Passed</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);">Chanel Tightens Control Over Distribution Network in APAC</a>
+                <p class="line-clamp-2 text-xs mt-0.5" style="color:var(--color-muted);">Strong alignment with luxury resale expertise. Direct relevance to premium brand distribution strategies.</p>
+                <span class="text-xs" style="color:var(--color-muted);">via Reuters &middot; 2h ago</span>
+              </div>
+            </li>
+            <li class="flex items-start gap-3 py-3">
+              <div class="min-w-0 flex-1">
+                <div class="mb-0.5 flex flex-wrap items-center gap-2">
+                  <span class="badge-score" style="background:rgba(251,191,36,0.15);color:#eab308;">67</span>
+                  <span class="badge-priority" style="background:rgba(251,191,36,0.15);color:#eab308;">medium</span>
+                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-400">Passed</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);;">Cartier Opens Flagship Boutique in Mumbai — What It Means for the Indian Luxury Market</a>
+                <p class="line-clamp-2 text-xs mt-0.5" style="color:var(--color-muted);">Moderate relevance. Geographic expansion story with indirect connection to resale arbitrage opportunities.</p>
+                <span class="text-xs" style="color:var(--color-muted);">via The Business of Fashion &middot; 5h ago</span>
+              </div>
+            </li>
+            <li class="flex items-start gap-3 py-3">
+              <div class="min-w-0 flex-1">
+                <div class="mb-0.5 flex flex-wrap items-center gap-2">
+                  <span class="badge-score" style="background:rgba(239,68,68,0.15);color:#ef4444;">34</span>
+                  <span class="badge-priority" style="background:rgba(107,114,128,0.15);color:#9ca3af;">low</span>
+                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-500/15 text-gray-400">Filtered out</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);;">Global Supply Chain Disruptions Hit Fast Fashion Retailers</a>
+                <p class="line-clamp-2 text-xs mt-0.5" style="color:var(--color-muted);">Fast fashion, not relevant to premium/luxury resale market positioning.</p>
+                <span class="text-xs" style="color:var(--color-muted);">via Bloomberg &middot; 6h ago</span>
+              </div>
+            </li>
+            <li class="flex items-start gap-3 py-3">
+              <div class="min-w-0 flex-1">
+                <div class="mb-0.5 flex flex-wrap items-center gap-2">
+                  <span class="badge-score" style="background:rgba(34,197,94,0.15);color:#22c55e;">88</span>
+                  <span class="badge-priority" style="background:rgba(239,68,68,0.15);color:#ef4444;">high</span>
+                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-400">Passed</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);;">Resale Platform The RealReal Reports First Profitable Quarter</a>
+                <p class="line-clamp-2 text-xs mt-0.5" style="color:var(--color-muted);">Directly speaks to resale market growth and platform economics — highly relevant.</p>
+                <span class="text-xs" style="color:var(--color-muted);">via TechCrunch &middot; 8h ago</span>
+              </div>
+            </li>
+            <li class="flex items-start gap-3 py-3">
+              <div class="min-w-0 flex-1">
+                <div class="mb-0.5 flex flex-wrap items-center gap-2">
+                  <span class="badge-score" style="background:rgba(239,68,68,0.15);color:#ef4444;">21</span>
+                  <span class="badge-priority" style="background:rgba(107,114,128,0.15);color:#9ca3af;">low</span>
+                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-500/15 text-gray-400">Filtered out</span>
+                </div>
+                <a href="#" class="block truncate text-sm font-medium hover:underline" style="color:var(--color-text);;">New EU Regulations on Textile Waste and Recycling Targets</a>
+                <p class="line-clamp-2 text-xs mt-0.5" style="color:var(--color-muted);">Regulatory story, tangential at best. Low alignment with brand expertise areas.</p>
+                <span class="text-xs" style="color:var(--color-muted);">via Euronews &middot; 12h ago</span>
+              </div>
+            </li>
+          </ul>
+          <!-- Pagination -->
+          <div class="mt-4 flex items-center justify-between border-t pt-4" style="border-color:var(--color-border);">
+            <span class="text-sm" style="color:var(--color-muted);">Showing 1&ndash;5 of 43</span>
+            <div class="flex items-center gap-2">
+              <button class="rounded-lg px-3 py-1.5 text-sm border transition-colors opacity-50 cursor-not-allowed" style="border-color:var(--color-border);color:var(--color-muted);">Previous</button>
+              <button class="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium bg-blue-600 text-white">1</button>
+              <button class="flex h-8 w-8 items-center justify-center rounded-lg text-sm" style="color:var(--color-muted);border:1px solid var(--color-border);">2</button>
+              <button class="flex h-8 w-8 items-center justify-center rounded-lg text-sm" style="color:var(--color-muted);border:1px solid var(--color-border);">3</button>
+              <span class="text-sm" style="color:var(--color-muted);">...</span>
+              <button class="flex h-8 w-8 items-center justify-center rounded-lg text-sm" style="color:var(--color-muted);border:1px solid var(--color-border);">9</button>
+              <button class="rounded-lg px-3 py-1.5 text-sm border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);">Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ===== THEME TOGGLE =====
+    const html = document.documentElement;
+    const sun = document.getElementById('sunIcon');
+    const moon = document.getElementById('moonIcon');
+
+    function setTheme(dark) {
+      if (dark) {
+        html.classList.remove('light'); html.classList.add('dark');
+        sun.classList.add('hidden'); moon.classList.remove('hidden');
+      } else {
+        html.classList.remove('dark'); html.classList.add('light');
+        moon.classList.add('hidden'); sun.classList.remove('hidden');
+      }
+    }
+    document.getElementById('darkToggle').addEventListener('click', () => {
+      setTheme(!html.classList.contains('dark'));
+    });
+
+    // ===== TABS =====
+    const tabs = document.querySelectorAll('.tab-btn');
+    const contents = {
+      drafts: document.getElementById('tab-drafts'),
+      scored: document.getElementById('tab-scored'),
+      feed: document.getElementById('tab-feed'),
+    };
+
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(b => {
+          b.classList.remove('active');
+          b.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim() || '#9ca3af';
+          b.style.borderBottomColor = 'transparent';
+        });
+        btn.classList.add('active');
+        btn.style.color = '#2563eb';
+        btn.style.borderBottomColor = '#2563eb';
+
+        Object.entries(contents).forEach(([key, el]) => {
+          el.classList.toggle('hidden', key !== btn.dataset.tab);
+        });
+      });
+    });
+
+    // ===== MOBILE SIDEBAR =====
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+      sidebar.classList.toggle('active');
+      overlay.classList.toggle('active');
+      if (sidebar.classList.contains('active')) {
+        sidebar.style.transform = 'translateX(0)';
+        overlay.style.display = 'block';
+      } else {
+        sidebar.style.transform = '';
+        overlay.style.display = '';
+      }
+    });
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('active');
+      sidebar.style.transform = '';
+      overlay.style.display = '';
+    });
+
+    // ===== FILTER CHIPS (Feed) =====
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    });
+
+    // ===== COLLAPSIBLE SECTIONS (fix: arrow + content visibility) =====
+    document.querySelectorAll('.card.collapsed .grid').forEach(grid => {
+      grid.classList.add('hidden');
+    });
+    document.querySelectorAll('.card button[onclick]').forEach(btn => {
+      btn.removeAttribute('onclick');
+      btn.addEventListener('click', function(e) {
+        const card = this.closest('.card');
+        card.classList.toggle('collapsed');
+        const grid = card.querySelector('.grid');
+        if (grid) {
+          grid.classList.toggle('hidden');
+        }
+        const arrow = card.querySelector('svg');
+        if (arrow) {
+          arrow.classList.toggle('-rotate-90');
+        }
+      });
+    });
+
+    // ===== SCORED TAB: select-all toggle =====
+    document.querySelector('#tab-scored input[type="checkbox"]')?.addEventListener('change', function() {
+      const checkboxes = document.querySelectorAll('#tab-scored .divide-y input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = this.checked);
+      updateGenerateBtn();
+    });
+    document.querySelectorAll('#tab-scored .divide-y input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', updateGenerateBtn);
+    });
+    function updateGenerateBtn() {
+      const checked = document.querySelectorAll('#tab-scored .divide-y input[type="checkbox"]:checked').length;
+      const btn = document.querySelector('#tab-scored .bg-blue-600');
+      if (btn) {
+        btn.disabled = checked === 0;
+        btn.textContent = `Generate drafts (${checked})`;
+        btn.classList.toggle('opacity-50', checked === 0);
+      }
+    }
+
+    // ===== INIT THEME =====
+    if (!html.classList.contains('dark') && !html.classList.contains('light')) {
+      html.classList.add('dark');
+    }
+  </script>
+</body>
+</html>

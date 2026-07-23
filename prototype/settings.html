@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KateSearches — Settings Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
+  <style>
+    :root { --color-bg: #111827; --color-surface: #1f2937; --color-border: #374151; --color-text: #f9fafb; --color-muted: #9ca3af; }
+    html.light { --color-bg: #f9fafb; --color-surface: #ffffff; --color-border: #e5e7eb; --color-text: #111827; --color-muted: #6b7280; }
+    body { background: var(--color-bg); color: var(--color-text); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; }
+    .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+    .sidebar-link.active { background: rgba(37,99,235,0.1); color: #3b82f6; border-right: 3px solid #3b82f6; }
+    .input-field { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); border-radius: 0.5rem; width: 100%; }
+    .input-field:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,0.3); }
+    label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.375rem; }
+    @media (max-width: 767px) { .sidebar-overlay.active { display: block; } .sidebar-drawer.active { transform: translateX(0); } }
+  </style>
+</head>
+<body>
+  <!-- ===== NAVBAR ===== -->
+  <nav class="sticky top-0 z-30 border-b" style="border-color:var(--color-border);background:var(--color-surface);">
+    <div class="mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4">
+      <div class="flex items-center gap-3">
+        <button id="mobileMenuBtn" class="block md:hidden p-2 rounded-lg hover:bg-gray-700/50" aria-label="Open menu">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <span class="text-lg font-bold" style="color:var(--color-text);">KateSearches</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="darkToggle" class="p-2 rounded-lg hover:bg-gray-700/50" aria-label="Toggle theme">
+          <svg id="sunIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <svg id="moonIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+        <div class="hidden sm:flex items-center gap-2">
+          <button class="px-3 py-1.5 text-sm rounded-lg border" style="border-color:var(--color-border);color:var(--color-muted);">EN</button>
+        </div>
+        <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">K</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="mx-auto flex max-w-screen-2xl">
+    <!-- ===== SIDEBAR ===== -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-60 -translate-x-full border-r transition-transform duration-200 md:relative md:translate-x-0 md:block shrink-0" style="background:var(--color-surface);border-color:var(--color-border);padding-top:3.5rem;">
+      <nav class="flex flex-col gap-1 p-4 pt-6">
+        <a href="dashboard.html" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Dashboard
+        </a>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Usage
+        </a>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          Billing
+        </a>
+        <div class="my-2 border-t" style="border-color:var(--color-border);"></div>
+        <a href="#" class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-muted);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+          Sources
+        </a>
+        <a href="#" class="sidebar-link active flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium" style="color:var(--color-text);">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Settings
+        </a>
+      </nav>
+    </aside>
+
+    <!-- ===== SIDEBAR OVERLAY (mobile) ===== -->
+    <div id="sidebarOverlay" class="sidebar-overlay fixed inset-0 z-30 hidden bg-black/50"></div>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="min-w-0 flex-1 px-4 py-6 md:px-8 lg:px-10">
+      <div class="mx-auto" style="max-width:896px;">
+        <!-- Header -->
+        <div class="mb-6">
+          <h1 class="text-2xl font-bold" style="color:var(--color-text);">Settings</h1>
+          <p class="text-sm" style="color:var(--color-muted);">Brand profile, news sources, and voice configuration</p>
+        </div>
+
+        <!-- ===== TAB BAR ===== -->
+        <div class="mb-6 border-b" style="border-color:var(--color-border);">
+          <nav class="-mb-px flex gap-6 overflow-x-auto">
+            <button class="tab-btn active pb-3 text-sm font-medium border-b-2" data-tab="brand">Brand Profile</button>
+            <button class="tab-btn pb-3 text-sm font-medium border-b-2 border-transparent" style="color:var(--color-muted);" data-tab="sources">Sources <span class="ml-1.5 rounded-full px-2 py-0.5 text-xs" style="background:rgba(37,99,235,0.15);color:#3b82f6;">4</span></button>
+            <button class="tab-btn pb-3 text-sm font-medium border-b-2 border-transparent" style="color:var(--color-muted);" data-tab="voice">Voice &amp; Tone</button>
+            <button class="tab-btn pb-3 text-sm font-medium border-b-2 border-transparent" style="color:var(--color-muted);" data-tab="general">General</button>
+          </nav>
+        </div>
+
+        <!-- ===== TAB: BRAND PROFILE ===== -->
+        <div id="tab-brand" class="tab-content">
+          <div class="card p-6 space-y-6">
+            <!-- Company Description -->
+            <div>
+              <label for="company">Company description</label>
+              <textarea id="company" rows="3" class="input-field px-3 py-2 text-sm" placeholder="What does your company do?">LOOTON — премиальный ресейл-маркетплейс люксовой одежды, сумок и аксессуаров. Мы даём вторую жизнь вещам класса люкс, сочетая выгоду с устойчивой модой.</textarea>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Appears in the system prompt for all AI stages.</p>
+            </div>
+
+            <!-- Audience Description -->
+            <div>
+              <label for="audience">Audience description</label>
+              <textarea id="audience" rows="3" class="input-field px-3 py-2 text-sm" placeholder="Who reads your content?">Покупатели и продавцы премиального ресейла: 25-45 лет, интересуются модой, следят за трендами, ценят устойчивое потребление и выгодные сделки. B2B-аудитория — fashion-ритейлеры и бренды.</textarea>
+            </div>
+
+            <!-- Relevance Criteria -->
+            <div>
+              <label for="criteria">Relevance criteria</label>
+              <textarea id="criteria" rows="3" class="input-field px-3 py-2 text-sm" placeholder="What stories to keep or drop?">Keep: люксовые бренды (Gucci, Prada, LV, Chanel, Hermes, Dior, Balenciaga, Saint Laurent), ресейл/секонд-хенд/винтаж, устойчивая мода (sustainability), коллаборации брендов, fashion-tech. Drop: масс-маркет, fast fashion, спортивная одежда, beauty-only.</textarea>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Free text: what to keep and what to drop.</p>
+            </div>
+
+            <!-- Score Threshold -->
+            <div>
+              <label for="threshold">Score threshold</label>
+              <div class="flex items-center gap-4">
+                <input id="threshold" type="range" min="0" max="100" value="60" class="flex-1 accent-blue-600" oninput="this.nextElementSibling.textContent=this.value">
+                <span class="text-sm font-semibold w-8 text-right">60</span>
+              </div>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Stories below this score are filtered out.</p>
+            </div>
+
+            <!-- Locales -->
+            <div>
+              <label>Content languages</label>
+              <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked class="rounded border-gray-600"> English
+                </label>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked class="rounded border-gray-600"> Russian
+                </label>
+              </div>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <div class="flex justify-end">
+              <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">Save profile</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== TAB: SOURCES ===== -->
+        <div id="tab-sources" class="tab-content hidden">
+          <div class="card p-6">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-semibold" style="color:var(--color-text);">Sources</h2>
+                <p class="text-sm" style="color:var(--color-muted);">RSS, sitemaps and scrapers monitored daily</p>
+              </div>
+              <button class="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Add source
+              </button>
+            </div>
+
+            <!-- Source list -->
+            <ul class="divide-y" style="border-color:var(--color-border);">
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-blue-500/15 text-blue-400">RSS</span>
+                    <span class="text-sm font-medium" style="color:var(--color-text);">The Business of Fashion</span>
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-400">On</span>
+                  </div>
+                  <p class="truncate text-xs mt-0.5" style="color:var(--color-muted);">https://www.businessoffashion.com/feed</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Test</button>
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Edit</button>
+                  <button class="rounded-lg p-1.5 hover:bg-gray-700/50">
+                    <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5.133 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </li>
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-purple-500/15 text-purple-400">Sitemap</span>
+                    <span class="text-sm font-medium" style="color:var(--color-text);">Vogue Business</span>
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-400">On</span>
+                  </div>
+                  <p class="truncate text-xs mt-0.5" style="color:var(--color-muted);">https://www.voguebusiness.com/sitemap.xml</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Test</button>
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Edit</button>
+                  <button class="rounded-lg p-1.5 hover:bg-gray-700/50">
+                    <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5.133 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </li>
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-blue-500/15 text-blue-400">RSS</span>
+                    <span class="text-sm font-medium" style="color:var(--color-text););">Reuters — Luxury Goods</span>
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-500/15 text-green-400">On</span>
+                  </div>
+                  <p class="truncate text-xs mt-0.5" style="color:var(--color-muted);">https://www.reuters.com/ar- ch/luxury/feed</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Test</button>
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Edit</button>
+                  <button class="rounded-lg p-1.5 hover:bg-gray-700/50">
+                    <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5.133 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </li>
+              <li class="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-orange-500/15 text-orange-400">Scraper</span>
+                    <span class="text-sm font-medium" style="color:var(--color-text);">WWD (Women's Wear Daily)</span>
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-500/15 text-gray-400">Off</span>
+                  </div>
+                  <p class="truncate text-xs mt-0.5" style="color:var(--color-muted);">https://wwd.com/eye/luxury/</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Test</button>
+                  <button class="rounded-lg px-3 py-1.5 text-xs font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Edit</button>
+                  <button class="rounded-lg p-1.5 hover:bg-gray-700/50">
+                    <svg class="w-4 h-4" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5.133 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </li>
+            </ul>
+
+            <!-- Inline add form mockup -->
+            <div class="mt-4 rounded-lg border border-dashed p-4" style="border-color:var(--color-border);background:rgba(55,65,81,0.3);">
+              <div class="mb-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label for="src-url" class="text-xs">URL</label>
+                  <input id="src-url" type="text" class="input-field px-3 py-2 text-sm" placeholder="https://example.com/feed">
+                </div>
+                <div>
+                  <label for="src-type" class="text-xs">Type</label>
+                  <select id="src-type" class="input-field px-3 py-2 text-sm">
+                    <option>RSS</option>
+                    <option>Sitemap</option>
+                    <option>Scraper</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="src-title" class="text-xs">Title (optional)</label>
+                  <input id="src-title" type="text" class="input-field px-3 py-2 text-sm" placeholder="My source">
+                </div>
+                <div>
+                  <label for="src-cat" class="text-xs">Category (optional)</label>
+                  <input id="src-cat" type="text" class="input-field px-3 py-2 text-sm" placeholder="fashion, luxury…">
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">Save source</button>
+                <button class="rounded-lg px-4 py-2 text-sm font-medium border" style="border-color:var(--color-border);color:var(--color-muted);">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== TAB: VOICE & TONE ===== -->
+        <div id="tab-voice" class="tab-content hidden">
+          <div class="card p-6 space-y-6">
+            <!-- Tone -->
+            <div>
+              <label for="tone">Voice &amp; tone</label>
+              <textarea id="tone" rows="3" class="input-field px-3 py-2 text-sm" placeholder="Describe the brand voice…">Экспертный, но доступный. Сочетаем аналитику luxury-рынка с практическими советами для покупателей и продавцов ресейла. Тон — уверенный, вдохновляющий, без излишнего пафоса. Избегаем клише «мир роскоши» и «эксклюзив». Пишем с позиции эксперта, который понимает и люкс, и выгоду.</textarea>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <!-- Voice Examples -->
+            <div>
+              <div class="mb-3 flex items-center justify-between">
+                <div>
+                  <label class="mb-0">Voice examples</label>
+                  <p class="text-xs" style="color:var(--color-muted);">Few-shot examples of the brand voice with their source news.</p>
+                </div>
+                <button class="flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm" style="border-color:var(--color-border);color:var(--color-muted);">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  Add example
+                </button>
+              </div>
+
+              <div class="space-y-2">
+                <!-- Example 1 (collapsible) -->
+                <div class="voice-example rounded-lg border" style="border-color:var(--color-border);">
+                  <button class="voice-example-header flex w-full items-center gap-3 px-4 py-3 text-left" onclick="toggleExample(this)">
+                    <svg class="voice-arrow w-4 h-4 shrink-0 transition-transform" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    <div class="min-w-0 flex-1">
+                      <span class="text-sm font-medium" style="color:var(--color-text);">Example 1</span>
+                      <p class="truncate text-xs mt-0.5" style="color:var(--color-muted);">Повышение цен Chanel — стратегический ход…</p>
+                    </div>
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(34,197,94,0.15);color:#22c55e;">Chanel</span>
+                  </button>
+                  <div class="voice-example-body hidden px-4 pb-4 space-y-3">
+                    <div>
+                      <label class="text-xs" style="color:var(--color-muted);">Source URL</label>
+                      <input type="text" class="input-field px-3 py-2 text-sm mt-0.5" value="https://www.businessoffashion.com/articles/luxury/chanel-price-increases-2025/">
+                    </div>
+                    <div>
+                      <label class="text-xs" style="color:var(--color-muted);">Post text</label>
+                      <textarea rows="4" class="input-field px-3 py-2 text-sm mt-0.5" placeholder="Paste the brand's actual post here…">Повышение цен Chanel — не просто инфляция, а стратегический ход: бренд укрепляет позиционирование в верхнем люксе и одновременно стимулирует спрос на ресейл. Для LOOTON это сигнал к усилению закупок классических моделей — they only go up in value. Разбираем, как изменение ценообразования люксовых домов влияет на вторичный рынок и почему сейчас лучшее время для инвестиции в премиальные вещи.</textarea>
+                    </div>
+                    <div>
+                      <label class="text-xs" style="color:var(--color-muted);">Why it works</label>
+                      <input type="text" class="input-field px-3 py-2 text-sm mt-0.5" value="Directly ties brand pricing strategy to resale opportunity — actionable insight for LOOTON's audience.">
+                    </div>
+                    <div class="flex justify-end pt-1">
+                      <button class="text-xs px-3 py-1.5 rounded-lg hover:bg-red-500/10" style="color:#ef4444;" onclick="this.closest('.voice-example').remove()">Remove example</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- Example 2 (collapsible, expanded by default to show the pattern) -->
+                <div class="voice-example rounded-lg border" style="border-color:var(--color-border);">
+                  <button class="voice-example-header flex w-full items-center gap-3 px-4 py-3 text-left" onclick="toggleExample(this)">
+                    <svg class="voice-arrow w-4 h-4 shrink-0 transition-transform" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    <div class="min-w-0 flex-1">
+                      <span class="text-sm font-medium" style="color:var(--color-text);">Example 2</span>
+                      <p class="truncate text-xs mt-0.5" style="color:var(--color-muted);">Vestiaire Collective расширяет circular-программу…</p>
+                    </div>
+                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(168,85,247,0.15);color:#a855f7;">Sustainability</span>
+                  </button>
+                  <div class="voice-example-body px-4 pb-4 space-y-3">
+                    <div>
+                      <label class="text-xs" style="color:var(--color-muted);">Source URL</label>
+                      <input type="text" class="input-field px-3 py-2 text-sm mt-0.5" value="https://wwd.com/sustainability/vestiaire-collective-circular-fashion-2025/">
+                    </div>
+                    <div>
+                      <label class="text-xs" style="color:var(--color-muted);">Post text</label>
+                      <textarea rows="4" class="input-field px-3 py-2 text-sm mt-0.5" placeholder="Paste the brand's actual post here…">Vestiaire Collective расширяет circular-программу — отличный повод поговорить о том, почему ресейл перестал быть альтернативой и стал мейнстримом. LOOTON уже три года строит инфраструктуру доверия: верификация, аутентификация, премиальный CX. Пока мир догоняет, мы здесь.</textarea>
+                    </div>
+                    <div>
+                      <label class="text-xs" style="color:var(--color-muted);">Why it works</label>
+                      <input type="text" class="input-field px-3 py-2 text-sm mt-0.5" value="Positions LOOTON as ahead of the curve, ties industry trend to brand differentiators.">
+                    </div>
+                    <div class="flex justify-end pt-1">
+                      <button class="text-xs px-3 py-1.5 rounded-lg hover:bg-red-500/10" style="color:#ef4444;" onclick="this.closest('.voice-example').remove()">Remove example</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <div class="flex justify-end">
+              <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">Save voice settings</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== TAB: GENERAL ===== -->
+        <div id="tab-general" class="tab-content hidden">
+          <div class="card p-6 space-y-6">
+            <div>
+              <label for="def-locale">Default content language</label>
+              <select id="def-locale" class="input-field px-3 py-2 text-sm mt-1 max-w-xs">
+                <option>English</option>
+                <option selected>Russian</option>
+              </select>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Used as primary generation language and LLM prompt language.</p>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <div>
+              <label>Theme</label>
+              <div class="mt-1 flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" name="theme" value="system" checked class="text-blue-600"> System
+                </label>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" name="theme" value="light" class="text-blue-600"> Light
+                </label>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="radio" name="theme" value="dark" class="text-blue-600"> Dark
+                </label>
+              </div>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <div>
+              <label for="llm-model">Scoring model</label>
+              <select id="llm-model" class="input-field px-3 py-2 text-sm mt-1 max-w-xs">
+                <option selected>gemini-2.0-flash-lite</option>
+                <option>gemini-2.0-flash</option>
+              </select>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Model used for relevance scoring. Faster = cheaper.</p>
+            </div>
+
+            <div>
+              <label for="draft-model">Drafting model</label>
+              <select id="draft-model" class="input-field px-3 py-2 text-sm mt-1 max-w-xs">
+                <option selected>gpt-5-mini</option>
+                <option>gpt-5</option>
+                <option>claude-sonnet-5</option>
+              </select>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Stronger model = better drafts, higher cost.</p>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <div>
+              <label for="tz">Timezone</label>
+              <select id="tz" class="input-field px-3 py-2 text-sm mt-1 max-w-xs">
+                <option>Europe/Moscow (MSK, UTC+3)</option>
+                <option>Europe/London (BST, UTC+1)</option>
+                <option>America/New_York (EDT, UTC-4)</option>
+              </select>
+              <p class="mt-1 text-xs" style="color:var(--color-muted);">Used for daily pipeline scheduling ("start of day").</p>
+            </div>
+
+            <hr style="border-color:var(--color-border);">
+
+            <div class="flex justify-end">
+              <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">Save general settings</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ===== THEME TOGGLE =====
+    const html = document.documentElement;
+    const sun = document.getElementById('sunIcon');
+    const moon = document.getElementById('moonIcon');
+
+    function setTheme(dark) {
+      if (dark) {
+        html.classList.remove('light'); html.classList.add('dark');
+        sun.classList.add('hidden'); moon.classList.remove('hidden');
+      } else {
+        html.classList.remove('dark'); html.classList.add('light');
+        moon.classList.add('hidden'); sun.classList.remove('hidden');
+      }
+    }
+    document.getElementById('darkToggle').addEventListener('click', () => {
+      setTheme(!html.classList.contains('dark'));
+    });
+    if (!html.classList.contains('dark') && !html.classList.contains('light')) {
+      html.classList.add('dark');
+    }
+
+    // ===== TABS =====
+    const tabs = document.querySelectorAll('.tab-btn');
+    const tabContents = {
+      brand: document.getElementById('tab-brand'),
+      sources: document.getElementById('tab-sources'),
+      voice: document.getElementById('tab-voice'),
+      general: document.getElementById('tab-general'),
+    };
+
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabs.forEach(b => {
+          b.classList.remove('active');
+          b.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-muted').trim() || '#9ca3af';
+          b.style.borderBottomColor = 'transparent';
+        });
+        btn.classList.add('active');
+        btn.style.color = '#2563eb';
+        btn.style.borderBottomColor = '#2563eb';
+
+        Object.entries(tabContents).forEach(([key, el]) => {
+          el.classList.toggle('hidden', key !== btn.dataset.tab);
+        });
+      });
+    });
+
+    // ===== VOICE EXAMPLES COLLAPSE =====
+    window.toggleExample = function(btn) {
+      const example = btn.closest('.voice-example');
+      const body = example.querySelector('.voice-example-body');
+      const arrow = btn.querySelector('.voice-arrow');
+      body.classList.toggle('hidden');
+      arrow.classList.toggle('rotate-180');
+    };
+
+    // ===== MOBILE SIDEBAR =====
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+      sidebar.classList.toggle('active');
+      overlay.classList.toggle('active');
+      if (sidebar.classList.contains('active')) {
+        sidebar.style.transform = 'translateX(0)';
+        overlay.style.display = 'block';
+      } else {
+        sidebar.style.transform = '';
+        overlay.style.display = '';
+      }
+    });
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('active');
+      sidebar.style.transform = '';
+      overlay.style.display = '';
+    });
+  </script>
+</body>
+</html>
