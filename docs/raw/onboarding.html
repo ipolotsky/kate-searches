@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KateSearches — Onboarding Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --color-bg: #111827; --color-surface: #1f2937; --color-border: #374151; --color-text: #f9fafb; --color-muted: #9ca3af; }
+    html.light { --color-bg: #f9fafb; --color-surface: #ffffff; --color-border: #e5e7eb; --color-text: #111827; --color-muted: #6b7280; }
+    body { background: var(--color-bg); color: var(--color-text); font-family: 'Inter', system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem; }
+    .input-field { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text); border-radius: 0.75rem; width: 100%; transition: border-color 0.2s; }
+    .input-field:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+    label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.375rem; }
+
+    /* Step transitions */
+    .step-panel { transition: opacity 0.35s ease, transform 0.35s ease; }
+    .step-panel.entering { opacity: 0; transform: translateY(12px); }
+    .step-panel.active { opacity: 1; transform: translateY(0); }
+
+    /* Step dots */
+    .step-dot { transition: all 0.3s ease; }
+    .step-dot.active { background: #3b82f6; border-color: #3b82f6; }
+    .step-dot.done { background: #22c55e; border-color: #22c55e; }
+    .step-line { transition: background 0.3s ease; }
+
+    /* Skeleton loading */
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    .skeleton { background: linear-gradient(90deg, var(--color-border) 25%, rgba(59,130,246,0.1) 50%, var(--color-border) 75%); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; border-radius: 0.375rem; }
+
+    /* Pulse circle for loading step */
+    @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.5; } 50% { opacity: 1; } 100% { transform: scale(1); opacity: 0.5; } }
+    .pulse-circle { animation: pulse-ring 1.8s ease-in-out infinite; }
+
+    /* Paywall modal */
+    .modal-overlay { transition: opacity 0.25s ease; }
+    .modal-content { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease; }
+
+    /* Confetti burst (simple CSS) */
+    @keyframes confetti-fall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(60px) rotate(720deg); opacity: 0; } }
+    .confetti-piece { position: absolute; width: 8px; height: 8px; border-radius: 2px; animation: confetti-fall 1.2s ease-in forwards; }
+  </style>
+</head>
+<body>
+  <!-- ===== TOP TRIAL BANNER ===== -->
+  <div class="flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 px-4 py-2 text-sm" style="border-bottom:1px solid var(--color-border);">
+    <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    <span style="color:var(--color-muted);">7-day free trial &middot; No credit card required to start</span>
+  </div>
+
+  <!-- ===== HEADER ===== -->
+  <header class="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">
+    <div class="flex items-center gap-3">
+      <span class="text-lg font-bold" style="color:var(--color-text);">KateSearches</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="themeToggle" class="p-2 rounded-lg hover:bg-gray-700/50 transition-colors" aria-label="Toggle theme">
+        <svg id="moonIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        <svg id="sunIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      </button>
+      <button id="skipBtn" class="rounded-lg px-4 py-2 text-sm font-medium border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);">Skip demo</button>
+    </div>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main class="mx-auto max-w-3xl px-4 pb-16 pt-4">
+    <!-- Step Progress -->
+    <div class="mb-12 flex items-center justify-center gap-0">
+      <div class="step-dot active flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold" style="border-color:#3b82f6;color:#3b82f6;">1</div>
+      <div class="step-line h-0.5 w-16 sm:w-24" style="background:var(--color-border);"></div>
+      <div class="step-dot flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold" style="border-color:var(--color-border);color:var(--color-muted);">2</div>
+      <div class="step-line h-0.5 w-16 sm:w-24" style="background:var(--color-border);"></div>
+      <div class="step-dot flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold" style="border-color:var(--color-border);color:var(--color-muted);">3</div>
+      <div class="step-line h-0.5 w-16 sm:w-24" style="background:var(--color-border);"></div>
+      <div class="step-dot flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold" style="border-color:var(--color-border);color:var(--color-muted);">4</div>
+    </div>
+    <!-- Step labels -->
+    <div class="mb-10 hidden justify-center gap-0 sm:flex">
+      <span class="w-[40px] text-center text-xs font-medium" style="color:#3b82f6;">Source</span>
+      <span class="w-[88px]"></span>
+      <span class="w-[40px] text-center text-xs" style="color:var(--color-muted);">Brand</span>
+      <span class="w-[88px]"></span>
+      <span class="w-[40px] text-center text-xs" style="color:var(--color-muted);">AI</span>
+      <span class="w-[88px]"></span>
+      <span class="w-[40px] text-center text-xs" style="color:var(--color-muted);">Post</span>
+    </div>
+
+    <!-- ==================== STEP 1: SOURCE ==================== -->
+    <div id="step1" class="step-panel active">
+      <div class="text-center">
+        <div class="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600/15">
+          <svg class="w-7 h-7 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+        </div>
+        <h1 class="mb-2 text-3xl font-bold tracking-tight" style="color:var(--color-text);">Paste a news source</h1>
+        <p class="mb-10 text-base" style="color:var(--color-muted);">Works with RSS feeds, news-sitemaps, or any URL.</p>
+      </div>
+
+      <div class="card mx-auto max-w-xl p-6">
+        <div class="relative">
+          <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+            <svg class="w-5 h-5" style="color:var(--color-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          </div>
+          <input id="sourceInput" type="url" placeholder="https://example.com/rss or https://example.com/sitemap.xml"
+            class="input-field w-full py-4 pl-12 pr-4 text-base"
+            value="https://www.businessoffashion.com/feed">
+        </div>
+        <p class="mt-3 text-xs" style="color:var(--color-muted);">We'll fetch the latest stories from this source.</p>
+      </div>
+
+      <div class="mt-4 flex justify-center gap-2">
+        <button class="rounded-xl bg-blue-600 px-8 py-3 text-base font-semibold text-white hover:bg-blue-700 transition-all hover:shadow-lg hover:shadow-blue-600/20" onclick="goToStep(2)">
+          Connect source
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== STEP 2: BRAND ==================== -->
+    <div id="step2" class="step-panel active hidden">
+      <div class="text-center">
+        <div class="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-600/15">
+          <svg class="w-7 h-7 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+        </div>
+        <h1 class="mb-2 text-3xl font-bold tracking-tight" style="color:var(--color-text);">Tell us about your brand</h1>
+        <p class="mb-10 text-base" style="color:var(--color-muted);">So we can write posts that sound like you.</p>
+      </div>
+
+      <div class="card mx-auto max-w-xl space-y-5 p-6">
+        <div>
+          <label for="companyName">Company name</label>
+          <input id="companyName" type="text" class="input-field px-4 py-3 text-base" value="LOOTON">
+        </div>
+        <div>
+          <label for="companyDesc">What does your company do? <span class="text-xs font-normal" style="color:var(--color-muted);">(2-3 sentences)</span></label>
+          <textarea id="companyDesc" rows="2" class="input-field px-4 py-3 text-base" placeholder="We are…">Premium resale marketplace for luxury fashion — bags, clothes, accessories. We give second life to luxury items.</textarea>
+        </div>
+        <div>
+          <label for="topics">What topics matter to you? <span class="text-xs font-normal" style="color:var(--color-muted);">(keep / drop)</span></label>
+          <textarea id="topics" rows="2" class="input-field px-4 py-3 text-base" placeholder="Keep stories about luxury brands, resale, sustainability… Drop fast fashion, sports…">Keep: luxury brands, resale, sustainability, fashion-tech. Drop: mass market, fast fashion.</textarea>
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-center gap-3">
+        <button class="rounded-xl px-6 py-3 text-base font-medium border transition-colors" style="border-color:var(--color-border);color:var(--color-muted);" onclick="goToStep(1)">Back</button>
+        <button class="rounded-xl bg-blue-600 px-8 py-3 text-base font-semibold text-white hover:bg-blue-700 transition-all hover:shadow-lg hover:shadow-blue-600/20" onclick="goToStep(3)">
+          Generate my first draft
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== STEP 3: LOADING ==================== -->
+    <div id="step3" class="step-panel active hidden">
+      <div class="flex flex-col items-center justify-center py-12">
+        <div class="relative mb-8">
+          <div class="flex h-24 w-24 items-center justify-center rounded-full bg-blue-600/10 pulse-circle">
+            <svg class="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+        </div>
+        <h2 class="mb-2 text-2xl font-bold" style="color:var(--color-text);">Cooking your draft…</h2>
+        <p class="mb-10 text-sm" style="color:var(--color-muted);">We're fetching news, scoring relevance, and writing in your brand voice.</p>
+
+        <div class="w-full max-w-md space-y-4">
+          <div class="flex items-center gap-3">
+            <div id="step_fetch" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2" style="border-color:var(--color-border);">
+              <div class="h-2 w-2 rounded-full bg-transparent"></div>
+            </div>
+            <span class="text-sm" style="color:var(--color-muted);">Fetching latest news…</span>
+            <span id="fetch_status" class="ml-auto text-xs" style="color:var(--color-muted);">queued</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="step_score" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2" style="border-color:var(--color-border);">
+              <div class="h-2 w-2 rounded-full bg-transparent"></div>
+            </div>
+            <span class="text-sm" style="color:var(--color-muted);">Scoring relevance…</span>
+            <span id="score_status" class="ml-auto text-xs" style="color:var(--color-muted);">waiting</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="step_draft" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2" style="border-color:var(--color-border);">
+              <div class="h-2 w-2 rounded-full bg-transparent"></div>
+            </div>
+            <span class="text-sm" style="color:var(--color-muted);">Writing draft in brand voice…</span>
+            <span id="draft_status" class="ml-auto text-xs" style="color:var(--color-muted);">waiting</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="step_done" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2" style="border-color:var(--color-border);">
+              <div class="h-2 w-2 rounded-full bg-transparent"></div>
+            </div>
+            <span class="text-sm" style="color:var(--color-muted);">Ready!</span>
+            <span id="done_status" class="ml-auto text-xs" style="color:var(--color-muted);">waiting</span>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="mt-8 h-2 w-full max-w-md overflow-hidden rounded-full" style="background:var(--color-border);">
+          <div id="progressBar" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-700 ease-out"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== STEP 4: DRAFT (WOW!) ==================== -->
+    <div id="step4" class="step-panel active hidden">
+      <!-- Confetti container -->
+      <div id="confettiContainer" class="relative mx-auto flex items-center justify-center" style="height:0;overflow:visible;z-index:10;"></div>
+
+      <div class="text-center">
+        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500/15">
+          <svg class="w-7 h-7 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <h1 class="mb-1 text-3xl font-bold tracking-tight" style="color:var(--color-text);">Your draft is ready</h1>
+        <p class="mb-8 text-sm" style="color:var(--color-muted);">Based on <strong style="color:var(--color-text);">Business of Fashion</strong> &middot; Relevance score: <strong style="color:#22c55e;">92</strong></p>
+      </div>
+
+      <!-- Draft preview -->
+      <div class="card mx-auto max-w-2xl overflow-hidden">
+        <!-- Draft header -->
+        <div class="border-b px-6 py-4" style="border-color:var(--color-border);">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <h2 class="text-xl font-bold leading-tight" style="color:var(--color-text);">Chanel Tightens Control Over Distribution — What It Means for the Resale Market</h2>
+            <span class="shrink-0 rounded-full bg-green-500/15 px-3 py-1 text-xs font-medium text-green-400">AI-generated draft</span>
+          </div>
+        </div>
+
+        <!-- Draft body -->
+        <div class="space-y-4 px-6 py-5">
+          <p class="text-sm leading-relaxed" style="color:var(--color-muted);">
+            Chanel is tightening its distribution network across Asia-Pacific — limiting which retailers can carry its products and how they're displayed. While this is a classic luxury-brand move to protect exclusivity, it has an interesting side effect: it boosts the resale market.
+          </p>
+          <p class="text-sm leading-relaxed" style="color:var(--color-muted);">
+            When official channels become more restricted, buyers turn to trusted resale platforms like <strong style="color:var(--color-text);">LOOTON</strong> to find the pieces they want. This isn't just about scarcity — it's about a structural shift in how luxury goods circulate.
+          </p>
+          <p class="text-sm leading-relaxed" style="color:var(--color-muted);">
+            <strong style="color:var(--color-text);">The brand tie-in:</strong> LOOTON's authentication infrastructure and premium CX position it perfectly to capture this demand. As Chanel tightens primary distribution, the secondary market becomes the go-to channel for informed buyers.
+          </p>
+        </div>
+
+        <!-- SEO + metadata preview (collapsed) -->
+        <div class="border-t" style="border-color:var(--color-border);">
+          <button class="flex w-full items-center justify-between px-6 py-3 text-left text-sm font-medium" style="color:var(--color-muted);" onclick="this.nextElementSibling.classList.toggle('hidden');this.querySelector('svg').classList.toggle('rotate-180')">
+            <span>SEO metadata &amp; JSON-LD</span>
+            <svg class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div class="hidden border-t px-6 py-4" style="border-color:var(--color-border);">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p class="text-xs font-medium" style="color:var(--color-muted);">Meta description</p>
+                <p class="text-xs" style="color:var(--color-text);">Chanel tightens distribution in APAC — here's why that's great news for the resale market and how LOOTON helps buyers find authenticated luxury pieces.</p>
+              </div>
+              <div>
+                <p class="text-xs font-medium" style="color:var(--color-muted);">Suggested title</p>
+                <p class="text-xs" style="color:var(--color-text);">Chanel Distribution Squeeze: A Hidden Opportunity for Resale</p>
+              </div>
+              <div class="sm:col-span-2">
+                <p class="text-xs font-medium" style="color:var(--color-muted);">JSON-LD (schema.org)</p>
+                <pre class="mt-1 overflow-x-auto rounded-lg bg-black/20 p-3 text-xs" style="color:#22c55e;">{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Chanel Tightens Control Over Distribution…",
+  "keywords": ["Chanel", "luxury resale", "fashion distribution", "LOOTON"],
+  "about": { "@type": "Thing", "name": "luxury resale market" }
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="flex flex-wrap gap-2 border-t px-6 py-3" style="border-color:var(--color-border);">
+          <span class="rounded-md bg-blue-600/10 px-2 py-1 text-xs font-medium text-blue-400">Chanel</span>
+          <span class="rounded-md bg-blue-600/10 px-2 py-1 text-xs font-medium text-blue-400">Distribution</span>
+          <span class="rounded-md bg-blue-600/10 px-2 py-1 text-xs font-medium text-blue-400">Resale opportunity</span>
+          <span class="rounded-md bg-purple-600/10 px-2 py-1 text-xs font-medium text-purple-400">Score: 92</span>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-4" style="border-color:var(--color-border);">
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="shareDraft()" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-700/30" style="border-color:var(--color-border);color:var(--color-muted);">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+              Share
+            </button>
+            <button onclick="copyDraft()" class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-700/30" style="border-color:var(--color-border);color:var(--color-muted);">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="showPaywall('edit')" class="rounded-xl border px-5 py-2 text-sm font-medium transition-colors" style="border-color:var(--color-border);color:var(--color-text);">Save & edit</button>
+            <button onclick="showPaywall('pipeline')" class="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">Run daily</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trust bar -->
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs" style="color:var(--color-muted);">
+        <span class="flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          No credit card needed
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          7-day free trial
+        </span>
+        <span class="flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          Cancel anytime
+        </span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== PAYWALL MODAL ==================== -->
+  <div id="paywallModal" class="modal-overlay fixed inset-0 z-50 hidden flex items-center justify-center bg-black/60 p-4" style="backdrop-filter:blur(4px);">
+    <div class="modal-content card mx-auto max-w-lg w-full overflow-hidden" style="transform:scale(0.95);">
+      <!-- Lottie-style header -->
+      <div class="bg-gradient-to-br from-blue-600 to-purple-600 px-6 py-8 text-center text-white">
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <h2 class="text-xl font-bold" id="modalTitle">You've seen the magic</h2>
+        <p class="mt-1 text-sm text-white/80" id="modalDesc">Now let KateSearches do this for you every day.</p>
+      </div>
+
+      <div class="p-6">
+        <!-- Plans -->
+        <div class="mb-6 grid gap-3 sm:grid-cols-2">
+          <div class="relative rounded-xl border-2 p-4" style="border-color:var(--color-border);">
+            <h3 class="text-sm font-semibold" style="color:var(--color-text);">Starter</h3>
+            <p class="mt-1 text-2xl font-bold" style="color:var(--color-text);">$29 <span class="text-sm font-normal" style="color:var(--color-muted);">/mo</span></p>
+            <ul class="mt-3 space-y-1.5 text-xs" style="color:var(--color-muted);">
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 3 sources</li>
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 30 drafts / mo</li>
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Daily auto-run</li>
+            </ul>
+          </div>
+          <div class="relative rounded-xl border-2 p-4" style="border-color:#3b82f6;background:rgba(59,130,246,0.05);">
+            <span class="absolute -top-2.5 right-3 rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-semibold text-white">Popular</span>
+            <h3 class="text-sm font-semibold" style="color:var(--color-text);">Pro</h3>
+            <p class="mt-1 text-2xl font-bold" style="color:var(--color-text);">$99 <span class="text-sm font-normal" style="color:var(--color-muted);">/mo</span></p>
+            <ul class="mt-3 space-y-1.5 text-xs" style="color:var(--color-muted);">
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 15 sources</li>
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 150 drafts / mo</li>
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 3 team seats</li>
+              <li class="flex items-center gap-1.5"><svg class="w-3 h-3 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Priority support</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-center gap-2 text-xs mb-5" style="color:var(--color-muted);">
+          <svg class="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          7-day free trial &middot; cancel anytime &middot; no hidden fees
+        </div>
+
+        <button class="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
+          Start 7-day free trial
+        </button>
+        <button onclick="closePaywall()" class="mt-2 w-full rounded-xl py-3 text-sm font-medium transition-colors" style="color:var(--color-muted);" onmouseover="this.style.background='var(--color-border)'" onmouseout="this.style.background='transparent'">
+          Maybe later
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SHARE TOAST ==================== -->
+  <div id="shareToast" class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-800 px-5 py-3 text-sm text-white shadow-2xl hidden transition-all duration-300 dark:bg-gray-700" style="box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+    <div class="flex items-center gap-3">
+      <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+      <span id="toastMessage">Link copied!</span>
+    </div>
+  </div>
+
+  <script>
+    // ===== THEME =====
+    const html = document.documentElement;
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark'); html.classList.add('light');
+        document.getElementById('moonIcon').style.display = 'none';
+        document.getElementById('sunIcon').style.display = 'block';
+      } else {
+        html.classList.remove('light'); html.classList.add('dark');
+        document.getElementById('sunIcon').style.display = 'none';
+        document.getElementById('moonIcon').style.display = 'block';
+      }
+    });
+    if (!html.classList.contains('dark') && !html.classList.contains('light')) html.classList.add('dark');
+
+    // ===== STEP NAVIGATION =====
+    let currentStep = 1;
+    const totalSteps = 4;
+    const dots = document.querySelectorAll('.step-dot');
+    const lines = document.querySelectorAll('.step-line');
+    const skipBtn = document.getElementById('skipBtn');
+
+    function goToStep(n) {
+      if (n < 1 || n > totalSteps) return;
+      if (n === 3) { startLoading(); }
+      if (n === 4) { triggerConfetti(); }
+
+      // Hide all panels
+      document.querySelectorAll('.step-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById('step' + n).classList.remove('hidden');
+
+      // Update dots
+      dots.forEach((dot, i) => {
+        const idx = i + 1;
+        dot.classList.remove('active', 'done');
+        if (idx === n) dot.classList.add('active');
+        else if (idx < n) dot.classList.add('done');
+        // Update dot color
+        if (idx === n) { dot.style.borderColor = '#3b82f6'; dot.style.color = '#3b82f6'; }
+        else if (idx < n) { dot.style.borderColor = '#22c55e'; dot.style.color = '#22c55e'; dot.textContent = '✓'; }
+        else { dot.style.borderColor = 'var(--color-border)'; dot.style.color = 'var(--color-muted)'; dot.textContent = idx; }
+      });
+
+      // Update lines
+      lines.forEach((line, i) => {
+        const idx = i + 1;
+        if (idx < n) line.style.background = '#22c55e';
+        else line.style.background = 'var(--color-border)';
+      });
+
+      // Update labels
+      document.querySelectorAll('.mb-10.hidden.sm\\:flex span').forEach((label, i) => {
+        const idx = i + 1;
+        if (idx === n) { label.style.color = '#3b82f6'; label.style.fontWeight = '500'; }
+        else if (idx < n) { label.style.color = '#22c55e'; label.style.fontWeight = '500'; }
+        else { label.style.color = 'var(--color-muted)'; label.style.fontWeight = '400'; }
+      });
+
+      currentStep = n;
+
+      // Show/hide skip
+      if (n === 4) skipBtn.textContent = 'Get started';
+      else skipBtn.textContent = 'Skip demo';
+    }
+
+    skipBtn.addEventListener('click', () => {
+      if (currentStep === 4) { showPaywall('pipeline'); return; }
+      goToStep(4);
+    });
+
+    // ===== LOADING ANIMATION (Step 3) =====
+    function startLoading() {
+      const bar = document.getElementById('progressBar');
+      bar.style.width = '0%';
+      document.getElementById('step_fetch').style.borderColor = 'var(--color-border)';
+      document.getElementById('step_score').style.borderColor = 'var(--color-border)';
+      document.getElementById('step_draft').style.borderColor = 'var(--color-border)';
+      document.getElementById('step_done').style.borderColor = 'var(--color-border)';
+
+      const steps = [
+        { el: 'step_fetch', status: 'fetch_status', text: 'Fetching latest news…', pct: 25, time: 800 },
+        { el: 'step_score', status: 'score_status', text: 'Scoring relevance…', pct: 55, time: 1800 },
+        { el: 'step_draft', status: 'draft_status', text: 'Writing draft in brand voice…', pct: 85, time: 3000 },
+        { el: 'step_done', status: 'done_status', text: 'Ready!', pct: 100, time: 4000 },
+      ];
+
+      steps.forEach((s, i) => {
+        setTimeout(() => {
+          const dot = document.getElementById(s.el);
+          const status = document.getElementById(s.status);
+          dot.style.borderColor = '#22c55e';
+          dot.style.background = '#22c55e';
+          dot.querySelector('div').style.background = 'white';
+          status.textContent = 'done';
+          status.style.color = '#22c55e';
+          bar.style.width = s.pct + '%';
+          if (i === steps.length - 1) {
+            setTimeout(() => goToStep(4), 500);
+          }
+        }, s.time);
+      });
+    }
+
+    // ===== CONFETTI =====
+    function triggerConfetti() {
+      const container = document.getElementById('confettiContainer');
+      container.innerHTML = '';
+      const colors = ['#3b82f6', '#22c55e', '#a855f7', '#eab308', '#ef4444', '#ec4899'];
+      for (let i = 0; i < 30; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.left = Math.random() * 100 + '%';
+        piece.style.top = Math.random() * -20 + 'px';
+        piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+        piece.style.animationDelay = Math.random() * 0.6 + 's';
+        piece.style.animationDuration = (0.8 + Math.random() * 0.6) + 's';
+        container.appendChild(piece);
+      }
+      setTimeout(() => container.innerHTML = '', 2000);
+    }
+
+    // ===== SHARE =====
+    function shareDraft() {
+      showToast('Link copied! Share this draft with your team.');
+    }
+
+    function copyDraft() {
+      showToast('Draft copied to clipboard!');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('shareToast');
+      document.getElementById('toastMessage').textContent = msg;
+      toast.classList.remove('hidden');
+      toast.style.opacity = '0';
+      toast.style.transform = 'translate(-50%, 20px)';
+      setTimeout(() => { toast.style.opacity = '1'; toast.style.transform = 'translate(-50%, 0)'; }, 10);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translate(-50%, 20px)';
+        setTimeout(() => toast.classList.add('hidden'), 300);
+      }, 2500);
+    }
+
+    // ===== PAYWALL =====
+    function showPaywall(source) {
+      const modal = document.getElementById('paywallModal');
+      const title = document.getElementById('modalTitle');
+      const desc = document.getElementById('modalDesc');
+      if (source === 'edit') {
+        title.textContent = 'Save this draft?';
+        desc.textContent = 'Create a free account to save, edit, and export your drafts.';
+      } else {
+        title.textContent = 'You\'ve seen the magic';
+        desc.textContent = 'Now let KateSearches do this for you every day.';
+      }
+      modal.classList.remove('hidden');
+      modal.querySelector('.modal-content').style.transform = 'scale(1)';
+      modal.querySelector('.modal-content').style.opacity = '1';
+    }
+
+    function closePaywall() {
+      const modal = document.getElementById('paywallModal');
+      modal.querySelector('.modal-content').style.transform = 'scale(0.95)';
+      modal.querySelector('.modal-content').style.opacity = '0';
+      setTimeout(() => modal.classList.add('hidden'), 250);
+    }
+
+    document.getElementById('paywallModal').addEventListener('click', function(e) {
+      if (e.target === this) closePaywall();
+    });
+
+    // ===== KEYBOARD SHORTCUTS =====
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePaywall();
+    });
+  </script>
+</body>
+</html>
