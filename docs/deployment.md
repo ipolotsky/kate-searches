@@ -222,7 +222,9 @@ Zero-downtime выкатка через плагин `docker-rollout` (scale-up 
 - Отдельный тяжёлый образ worker с crawl4ai/Playwright, если понадобится JS-рендер источников.
 - Self-hosted LiteLLM + Langfuse рядом с api для метеринга и бюджетов per-tenant (в MVP-проде выключены: прямой SDK, `LANGFUSE_ENABLED=false`).
 - Промоушен api-образа из staging в prod ре-тегом дайджеста вместо пересборки.
-- Метрики/алерты (healthcheck-эндпоинты уже есть у web и api).
+
+Наблюдаемость (централизованные логи/трейсы/метрики) вынесена в §14 и в отдельный
+[план](/plans/observability-otel-victorialogs-plan.md) — она уже не «пока не делаем», а near-term (фаза A — логи).
 
 ## 13. Факт развёртывания и гочи bring-up
 
@@ -237,3 +239,42 @@ Zero-downtime выкатка через плагин `docker-rollout` (scale-up 
 - **celery beat под non-root пишет `celerybeat-schedule` в cwd `/app` (root-owned) -> Permission denied.** Решение: `--schedule /tmp/celerybeat-schedule`.
 - **CI -> VM ssh.** Для `appleboy/ssh-action` заведена выделенная deploy-пара: публичный ключ в `~kate/.ssh/authorized_keys`, приватный в секрете `VPS_SSH_KEY`. Ключ `github_ed25519` (Deploy key репозитория) — это для git pull с сервера, направление другое.
 - **Стоимость LLM.** Обе Supabase-БД на момент запуска пустые (0 тенантов/источников), beat диспатчит только due-тенантов -> нулевые вызовы LLM до онбординга. Модель драфта по умолчанию `openai/gpt-5-mini` требует `OPENAI_API_KEY` (или переключить `LLM_MODEL_DRAFT` на Gemini); скоринг — Gemini.
+
+## 14. Наблюдаемость (OpenTelemetry + VictoriaLogs)
+
+Решение — [ADR-0010](/adr/0010-observability-otel-victorialogs.md), детальный план и декомпозиция T1–T10 —
+[observability-otel-victorialogs-plan](/plans/observability-otel-victorialogs-plan.md). Здесь — как это ложится на VM.
+
+**Зачем.** До этого единственный инструмент — эфемерный `docker compose logs` (§10): нет истории (теряется при
+`rollout`/`recreate`), нет корреляции `web -> api -> worker`, нет поиска по `tenant_id`/`request_id`. Langfuse
+([ADR-0004](/adr/0004-litellm-gateway-langfuse-metering.md)) покрывает только LLM-стоимость и в MVP выключен —
+телеметрия приложения/инфры это отдельный контур.
+
+**Что ставим.** Единая инструментация через **OpenTelemetry** (инструментируем раз, бэкенд меняем конфигом Collector)
++ **VictoriaLogs** как лёгкий бэкенд логов (один бинарь, ~десятки MB RAM, нативный OTLP-приём — влезает рядом с двумя
+app-стеками и Traefik, в отличие от ELK/Loki).
+
+**Топология.** Один **общий** стек наблюдаемости на всю машину (как один общий Traefik, §8) отдельным
+compose-проектом в `/srv/observability/`: `otel-collector` + `victorialogs`. Обслуживает и prod, и stage, разделяя
+данные меткой `env`. Новая внешняя docker-сеть `obs` (по аналогии с `proxy`): Collector в ней, app-контейнеры
+получают членство в `obs` в дополнение к приватной `internal`. VictoriaLogs наружу не публикуется — только его UI через
+Traefik + basic-auth.
+
+```
+  web/api/worker/beat ── stdout(JSON) ─┐
+  Traefik access.log ── json-file ─────┴─ filelog scrape ─► [otel-collector] ─OTLP─► [victorialogs]
+                                          (+ OTLP push: traces/metrics, фазы B/C)         (UI за Traefik+auth)
+```
+
+**Доставка.** Логи — **scrape** из docker `json-file` (Collector `filelog`): приложение не зависит от даунтайма
+Collector, `docker compose logs` продолжает работать. Трейсы/метрики (фазы B/C) — push по OTLP на `otel-collector:4317`.
+
+**Ресурсы.** `mem_limit`: victorialogs `256m`, collector `128m` (≤ ~400 MB из ~6 GB свободных, см. §13),
+параметризовать через `.env` как остальные лимиты. Retention VictoriaLogs 7–14 дней + жёсткий потолок диска;
+docker `json-file` ограничить `max-size`/`max-file`, чтобы источник логов не рос.
+
+**Флаг.** Весь контур за `OTEL_ENABLED` (как `LANGFUSE_ENABLED`): в dev выключен, включается без пересборки образов.
+
+**Фазы.** A — логи (near-term, целевая); B — трейсы (авто-инструментация FastAPI/httpx/Celery/SQLAlchemy/Redis + Node
+SDK, проброс `traceparent`); C — метрики + алерты (VictoriaMetrics + vmalert). Заменяет прежнюю строку «Метрики/алерты»
+из §12 роадмапа.

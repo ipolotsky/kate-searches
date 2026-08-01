@@ -1,5 +1,17 @@
 # Docs Update Log
 
+## 2026-08-01 (observability)
+* **Decision + Plan**: Добавлены [ADR-0010](adr/0010-observability-otel-victorialogs.md) (наблюдаемость:
+  OpenTelemetry + VictoriaLogs, Y-Statement) и [план внедрения](plans/observability-otel-victorialogs-plan.md)
+  (фазы A→B→C, топология на VM, инструментация web/api/worker/beat, связь с Langfuse). Обновлены
+  листинги [adr/index](adr/index.md) и [plans/index](plans/index.md).
+* **Update**: Добавлен раздел [деплой §14](deployment.md) «Наблюдаемость» (топология на VM, доставка,
+  ресурсы, фазы); из [§12](deployment.md) роадмапа снята строка «Метрики/алерты» (→ ссылка на §14 и план).
+* **Decision**: Закрыты открытые вопросы плана §11 — весь стек наблюдаемости на экосистеме Victoria*:
+  трейсы (фаза B) → **VictoriaTraces**, метрики (фаза C) → VictoriaMetrics; **Grafana не ставим** (хватает
+  нативных UI VictoriaLogs/vmui); **PR-окружения** (когда появятся) пишут в **один общий** стек с меткой
+  `env=pr-<n>` (вариант A), без отдельного стека на PR.
+
 ## 2026-08-01 (audit follow-up)
 * **Refactor**: Grouped the three plan docs into a new [`plans/`](plans/index.md) section
   (`m1-ingestion-plan`, `launch-plan`, `handoff`) with a section index; updated the root
