@@ -1,12 +1,36 @@
+---
+type: Prompt Spec
+title: AI-пайплайн и промпт-спеки
+description: Пайплайн extract→score→generate→feedback, промпт-шаблоны, JSON-схемы и SEO/AEO-чеклист.
+status: stable
+tags: [tech, ai, prompts]
+generated:
+  by: human:alexander.polyakov
+  at: 2026-06-30
+---
+
 # 05 — AI-пайплайн и промпт-спеки
 
 Документы Kate («Источники модных новостей», «Критерии отбора») — это фактически готовая спека для движков экстракции и скоринга. Ниже они переведены в инженерные артефакты: JSON-схемы, промпт-шаблоны, чеклисты. Спеки **тенант-настраиваемые** — LOOTON просто первая калибровка.
 
 ## 1. Архитектура пайплайна
 
-`extract → score → generate → feedback` — линейный DAG с одной развилкой (порог). Без LangGraph. Каждый LLM-вызов: `Instructor + Pydantic` через `LiteLLM` (роутинг + бюджет) с трейсом в `Langfuse` (cost per tenant).
+Новость проходит стадии строго по порядку — линейный DAG с одной развилкой (порог), без LangGraph:
 
-Роутинг моделей:
+`ingest → extract → dedup/novelty → score → [порог] → generate → feedback`
+
+- **ingest** — адаптеры источников тянут сырьё инкрементально (RSS / sitemap / скрапер).
+- **extract** — `trafilatura` чистит текст, канонизирует URL, обогащает метаданными.
+- **dedup/novelty** — hash/simhash-дедуп + отсев не-сегодняшних статей.
+- **score** — скоринг по критериям тенанта (Stage 2 ниже); ниже порога → `filtered_out`.
+- **generate** — прошедшим порог генерим черновик-симбиоз (Stage 3 ниже).
+- **feedback** — оценки/правки маркетолога копятся обратно в промпты (Stage 4 ниже).
+
+Полная карта данных с sequence-диаграммой — [архитектура §3](/architecture.md).
+
+Каждый LLM-вызов (`Instructor + Pydantic`) идёт через **гейтвей LiteLLM** (роутинг моделей + hard-бюджет per-tenant) и трассируется в **Langfuse** (cost-metering per tenant). Детали cost-metering-контура — [архитектура §6](/architecture.md).
+
+Роутинг моделей — по стадии:
 - **Stage SCORE** — дешёвая модель (Gemini 2.0 Flash-Lite / GPT-nano). Высокий объём, низкая цена.
 - **Stage GENERATE** — сильная модель (Claude Sonnet 4.6 / GPT-flagship) или GPT-mini для эконом-тарифа.
 
@@ -195,7 +219,7 @@ flowchart LR
 1. **Вызов A (дешёвая модель):** extract-обогащение + scoring в одном structured-выводе → `ExtractedArticle + RelevanceScore`. ~$0.0003.
 2. **Вызов B (сильная модель), только если passes_threshold:** генерация `DraftPost`. ~$0.005–0.04.
 
-Так платим за дорогую модель только на прошедших отбор (обычно 5–20% потока). Это ядро юнит-экономики (`06_pricing_unit_economics.md`).
+Так платим за дорогую модель только на прошедших отбор (обычно 5–20% потока). Это ядро юнит-экономики ([юнит-экономика](/pricing-unit-economics.md)).
 
 ## 7. Цена за операцию (актуально апрель 2026)
 

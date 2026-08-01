@@ -1,3 +1,14 @@
+---
+type: Architecture
+title: Техническая архитектура
+description: Стек, карта компонентов, схема данных, адаптеры источников, AI-пайплайн, cost-metering и инфраструктура.
+status: stable
+tags: [tech, architecture]
+generated:
+  by: human:alexander.polyakov
+  at: 2026-06-30
+---
+
 # 03 — Техническая архитектура
 
 > Решения зафиксированы: Next.js + Flowbite React (фронт) + FastAPI (AI/скрапинг), Supabase (Postgres+Auth+RLS), глобальная юрисдикция, биллинг после MVP (метеринг с D1).

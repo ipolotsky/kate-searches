@@ -39,10 +39,12 @@ docs/                продуктовые и технические докум
 
 ## Документация
 
-- [Обзор и decision log](./docs/00_README.md)
-- [Рыночный ресёрч](./docs/01_market_research.md)
-- [PRD](./docs/02_PRD.md)
-- [Архитектура](./docs/03_architecture.md)
-- [MVP-спека](./docs/04_mvp_spec.md)
-- [AI-пайплайн и промпты](./docs/05_ai_pipeline_prompts.md)
-- [Юнит-экономика](./docs/06_pricing_unit_economics.md)
+Оформлено как [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)-бандл — точка входа [`docs/index.md`](./docs/index.md).
+
+- [Обзор и decision log](./docs/overview.md)
+- [Рыночный ресёрч](./docs/market-research.md)
+- [PRD](./docs/prd.md)
+- [Архитектура](./docs/architecture.md)
+- [MVP-спека](./docs/mvp-spec.md)
+- [AI-пайплайн и промпты](./docs/ai-pipeline-prompts.md)
+- [Юнит-экономика](./docs/pricing-unit-economics.md)

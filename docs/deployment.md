@@ -1,6 +1,17 @@
+---
+type: Deployment Spec
+title: Спек деплоя и инфраструктуры
+description: Как KateSearches собирается, катится и живёт в проде и на staging — CI/CD, Docker, Traefik, VM.
+status: stable
+tags: [tech, deployment, infra]
+generated:
+  by: human:alexander.polyakov
+  at: 2026-06-30
+---
+
 # 08 — Спек деплоя и инфраструктуры
 
-> Источник истины по тому, как KateSearches собирается, катится и живёт в проде и на staging. Опорные файлы в репозитории: `deploy/` (compose.yml, deploy.sh, traefik/, env.example, README.md), `.github/workflows/` (ci.yml, deploy-staging.yml, deploy-prod.yml), `apps/web/Dockerfile`, `services/api/Dockerfile`. Опорные доки: `03_architecture.md` (стек), `07_m1_ingestion_plan.md` (Celery-конвейер, который катится как worker/beat).
+> Источник истины по тому, как KateSearches собирается, катится и живёт в проде и на staging. Опорные файлы в репозитории: `deploy/` (compose.yml, deploy.sh, traefik/, env.example, README.md), `.github/workflows/` (ci.yml, deploy-staging.yml, deploy-prod.yml), `apps/web/Dockerfile`, `services/api/Dockerfile`. Опорные доки: [архитектура](/architecture.md) (стек), [план M1](/plans/m1-ingestion-plan.md) (Celery-конвейер, который катится как worker/beat).
 
 ## 1. Что и куда деплоим
 

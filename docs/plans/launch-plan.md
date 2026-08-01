@@ -1,3 +1,14 @@
+---
+type: Plan
+title: План запуска — ревью, триал, уведомления, Stripe, UX
+description: Итоги ревью кодовой базы, механика триала, биллинг, email-уведомления и launch-блокеры.
+status: draft
+tags: [product, launch, plan]
+generated:
+  by: human:alexander.polyakov
+  at: 2026-06-30
+---
+
 # 09 - План запуска: ревью, триал, уведомления, Stripe, UX
 
 Источник: независимое ревью кодовой базы (7 измерений, каждая находка адверсариально верифицирована по реальному коду) плюс research по best practices free-trial, Resend и Stripe test-mode. Числа и решения ниже зафиксированы владельцем.

@@ -1,7 +1,7 @@
 """Стадия генерации: прошедшая отбор новость -> DraftPost в голосе бренда -> строка posts.
 
 Использует сильную модель (settings.llm_model_draft). Few-shot из brand_profile.voice_examples
-(см. docs/05_ai_pipeline_prompts.md §4). Запускается отдельным потоком (on-demand), не в дневном
+(см. docs/ai-pipeline-prompts.md §4). Запускается отдельным потоком (on-demand), не в дневном
 прогоне: LLM-вызов вынесен между двумя короткими транзакциями (сильная модель держит ~20-60с).
 """
 

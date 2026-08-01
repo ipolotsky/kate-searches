@@ -4,7 +4,7 @@
 
 ## TL;DR что это
 
-B2B SaaS: ежедневно мониторит источники новостей в нише клиента → **скорит** каждую новость по кастомным критериям релевантности его аудитории → для прошедших отбор **генерит черновик SEO/AEO-поста** в голосе бренда, связывая новость как инфоповод с брендом клиента в статью-симбиоз → отдаёт в дашборд черновиков. Первый клиент — **LOOTON** (ресейл-маркетплейс премиум-одежды). Его доки уже задали спеку движков отбора и экстракции (см. `docs/05_ai_pipeline_prompts.md`).
+B2B SaaS: ежедневно мониторит источники новостей в нише клиента → **скорит** каждую новость по кастомным критериям релевантности его аудитории → для прошедших отбор **генерит черновик SEO/AEO-поста** в голосе бренда, связывая новость как инфоповод с брендом клиента в статью-симбиоз → отдаёт в дашборд черновиков. Первый клиент — **LOOTON** (ресейл-маркетплейс премиум-одежды). Его доки уже задали спеку движков отбора и экстракции (см. [docs/ai-pipeline-prompts.md](docs/ai-pipeline-prompts.md)).
 
 ## Зафиксированные решения (не пересматривать без явного запроса)
 
@@ -18,7 +18,7 @@ B2B SaaS: ежедневно мониторит источники новост�
 - **Генерация:** черновик — симбиоз «инфоповод × бренд». Новость органично связывается с брендом через его профиль (позиционирование, экспертиза, угол). Каталога товаров / продуктового слоя нет — связка идёт с брендом, не с SKU.
 - **Источники в MVP:** RSS + news-sitemap + Crawl4AI-скрапер (Firecrawl fallback). Соцсети (Telegram/Reddit) — фаза 2, но адаптер-абстракция готова с D1.
 
-Полный decision log — `docs/00_README.md`. Конкуренты/рынок — `docs/01_market_research.md`. Продукт — `docs/02_PRD.md`. Архитектура — `docs/03_architecture.md`. MVP-скоуп — `docs/04_mvp_spec.md`. Промпт-спеки — `docs/05_ai_pipeline_prompts.md`. Экономика — `docs/06_pricing_unit_economics.md`. Деплой/инфра — `docs/08_deployment.md`.
+Точка входа в базу знаний (OKF-бандл) — [docs/index.md](docs/index.md). Обзор и порядок чтения — [docs/overview.md](docs/overview.md). Decision log (9 ADR, Y-Statement) — [docs/adr/](docs/adr/index.md). Конкуренты/рынок — [docs/market-research.md](docs/market-research.md). Продукт — [docs/prd.md](docs/prd.md). Архитектура — [docs/architecture.md](docs/architecture.md). MVP-скоуп — [docs/mvp-spec.md](docs/mvp-spec.md). Промпт-спеки — [docs/ai-pipeline-prompts.md](docs/ai-pipeline-prompts.md). Экономика — [docs/pricing-unit-economics.md](docs/pricing-unit-economics.md). Деплой/инфра — [docs/deployment.md](docs/deployment.md). Планы и снимок состояния — [docs/plans/](docs/plans/index.md) (в т.ч. [handoff](docs/plans/handoff.md)). Журнал изменений доков — [docs/log.md](docs/log.md).
 
 ## Структура монорепы
 
@@ -29,7 +29,7 @@ kate-searches/
 ├── supabase/migrations/ # SQL-схема + RLS
 ├── docs/                # продуктовые и технические доки (источник истины по продукту)
 ├── .github/workflows/   # ci.yml (lint+test, reusable) + deploy-staging/deploy-prod (docker rollout)
-├── deploy/              # VM-стек: compose.yml, deploy.sh, traefik/, env.example (см. docs/08)
+├── deploy/              # VM-стек: compose.yml, deploy.sh, traefik/, env.example (см. docs/deployment.md)
 ├── docker-compose.yml   # локальные postgres + redis
 ├── Makefile             # частые команды
 └── CLAUDE.md            # этот файл
@@ -73,20 +73,20 @@ make db-migrate             # psql < supabase/migrations/*.sql (или supabase 
 
 ## Что НЕ делать в MVP
 
-LangChain/LangGraph, Airbyte/Kafka, векторную БД, соцсеть-адаптеры (кроме абстракции), Stripe-биллинг, автопубликацию в CMS. Эти вещи в роадмапе — см. `docs/04_mvp_spec.md` §2.
+LangChain/LangGraph, Airbyte/Kafka, векторную БД, соцсеть-адаптеры (кроме абстракции), Stripe-биллинг, автопубликацию в CMS. Эти вещи в роадмапе — см. [docs/mvp-spec.md](docs/mvp-spec.md) §2.
 
 ## Известные внешние зависимости / TODO для владельца
 
 - **GitHub push:** репо `https://github.com/ipolotsky/kate-searches`. Локальный коммит готов; запушить из Claude Code (`git push -u origin main`) — auth на машине владельца.
-- **Flowbite MCP:** контейнер `flowbite-mcp-pro-100` поднят в докере, отдаёт MCP по streamable-HTTP на `http://localhost:3333/mcp` (health: `:3333/health`). Чтобы подключить в репо — скопировать `docs/mcp.example.json` → `.mcp.json` (HTTP-транспорт, готов). Пригодится на M4 (UI на Flowbite).
+- **Flowbite MCP:** контейнер `flowbite-mcp-pro-100` поднят в докере, отдаёт MCP по streamable-HTTP на `http://localhost:3333/mcp` (health: `:3333/health`). Чтобы подключить в репо — скопировать [docs/mcp.example.json](docs/mcp.example.json) → `.mcp.json` (HTTP-транспорт, готов). Пригодится на M4 (UI на Flowbite).
 - **Пример CI/CD владельца:** `~/Develop/Mountly/TestTask` — свериться с их паттерном (lint+test отдельно от deploy; deploy всегда после прохождения тестов — уже отражено в `.github/workflows/`).
 - **Ждём от Kate:** примеры её реальных статей с указанием инфоповода-источника (few-shot для брендового голоса).
 
 ## Ближайшие шаги (приоритет)
 
 1. M0 — каркас: поднять web+api локально, Supabase-схема, LiteLLM+Langfuse.
-2. M1 — ingestion: RSS+sitemap+Crawl4AI адаптеры, extract+dedup+novelty. Детальный план — `docs/07_m1_ingestion_plan.md`.
-3. M2 — скоринг по rubric из `docs/05`.
+2. M1 — ingestion: RSS+sitemap+Crawl4AI адаптеры, extract+dedup+novelty. Детальный план — [docs/plans/m1-ingestion-plan.md](docs/plans/m1-ingestion-plan.md).
+3. M2 — скоринг по rubric из [docs/ai-pipeline-prompts.md](docs/ai-pipeline-prompts.md).
 4. M3 — генерация черновиков.
 5. M4 — UI (дашборд/редактор/онбординг).
-Подробнее — `docs/04_mvp_spec.md` §7.
+Подробнее — [docs/mvp-spec.md](docs/mvp-spec.md) §7.
