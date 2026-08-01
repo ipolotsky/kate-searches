@@ -34,3 +34,4 @@ build/
 coverage/
 .crawl4ai/
 *.sqlite
+.obsidian/
