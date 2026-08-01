@@ -1,3 +1,14 @@
+---
+type: Spec
+title: MVP-спецификация
+description: Скоуп MVP, user stories, экраны, статусы постов, acceptance criteria и вехи.
+status: stable
+tags: [product, tech, mvp]
+generated:
+  by: human:alexander.polyakov
+  at: 2026-06-30
+---
+
 # 04 — MVP-спецификация
 
 Цель MVP: довести один живой конвейер до качества, при котором маркетолог LOOTON **реально публикует** черновики и экономит часы. Всё остальное — после подтверждения, что движки отбора и генерации дают приемлемое качество.

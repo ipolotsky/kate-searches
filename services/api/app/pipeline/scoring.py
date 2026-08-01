@@ -1,7 +1,7 @@
 """Стадия скоринга: новость -> RelevanceScore по критериям тенанта.
 
 Использует дешёвую модель (settings.llm_model_score) через LLM-обёртку.
-Промпт строится из brand_profile (см. docs/05_ai_pipeline_prompts.md).
+Промпт строится из brand_profile (см. docs/ai-pipeline-prompts.md).
 """
 
 import uuid
