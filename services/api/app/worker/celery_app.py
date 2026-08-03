@@ -4,7 +4,10 @@ Result backend включён с M1 — нужен для chord-барьеров
 Очереди default/fetch/extract/score/generate с роутингом по имени задачи.
 """
 
+import logging
+
 from celery import Celery
+from celery.signals import worker_process_init
 
 from app.config import settings
 
@@ -68,3 +71,16 @@ def create_celery() -> Celery:
 
 
 celery_app = create_celery()
+
+
+# OTel bootstrap: worker_process_init fired AFTER Celery настроил свой logging,
+# иначе наш LoggingHandler затирается.
+@worker_process_init.connect
+def _setup_otel_logging(**_kwargs: object) -> None:
+    if not settings.otel_enabled:
+        return
+    from app.observability import configure_structlog, setup_otel
+
+    setup_otel(service_name=settings.otel_service_name)
+    configure_structlog(json_output=True)
+    logging.getLogger().info("OTel logging initialized for worker")

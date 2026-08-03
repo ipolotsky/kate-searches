@@ -35,6 +35,12 @@ services:
     networks:
       - default
       - obs
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app inspect ping --timeout 5 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     logging:
       driver: json-file
       options:
@@ -44,7 +50,7 @@ services:
   # Celery beat: heartbeat диспетчера дневных прогонов (per-tenant tz).
   beat:
     build: ./services/api
-    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info"]
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info", "--schedule", "/tmp/celerybeat-schedule"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
       REDIS_URL: redis://redis:6379/0
@@ -59,6 +65,12 @@ services:
     networks:
       - default
       - obs
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline | grep -q celery || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     logging:
       driver: json-file
       options:
@@ -154,6 +166,7 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
+      - "13133:13133"
     networks:
       - obs
     mem_limit: 128m

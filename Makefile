@@ -2,6 +2,11 @@
 
 up:            ## поднять локальную инфру (Supabase CLI + Redis)
 	supabase start
+	@echo "Waiting for Supabase Postgres..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "SELECT 1" >/dev/null 2>&1 && break; \
+		echo "  waiting... ($$i)"; sleep 2; \
+	done
 	docker compose up -d
 
 down:          ## остановить инфру

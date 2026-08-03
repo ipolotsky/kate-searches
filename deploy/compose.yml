@@ -25,7 +25,10 @@ services:
     environment:
       API_BASE_URL: http://api:8000
       PORT: "3000"
-    networks: [proxy, internal]
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-web
+    networks: [proxy, internal, obs]
     mem_limit: ${WEB_MEM:-640m}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]

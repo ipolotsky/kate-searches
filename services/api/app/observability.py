@@ -21,18 +21,28 @@ stage_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("stage", default
 
 
 def setup_otel(service_name: str = "kate-api") -> None:
-    """Инициализация OTel SDK + авто-инструментация. Вызывать один раз при старте."""
+    """Инициализация OTel SDK + лог-экспорт + авто-инструментация. Вызывать один раз при старте."""
     from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     resource = Resource.create({"service.name": service_name})
-    provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter()
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
+
+    # Traces
+    tp = TracerProvider(resource=resource)
+    tp.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(tp)
+
+    # Logs
+    lp = LoggerProvider(resource=resource)
+    lp.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter()))
+    handler = LoggingHandler(level=logging.INFO, logger_provider=lp)
+    logging.getLogger().addHandler(handler)
 
     # Авто-инструментация (zero-code)
     from opentelemetry.instrumentation.celery import CeleryInstrumentor

@@ -14,9 +14,12 @@ processors:
 exporters:
   otlphttp:
     endpoint: http://victorialogs:9428/insert/opentelemetry
+  debug:
+    verbosity: basic
 
 extensions:
   health_check:
+    endpoint: 0.0.0.0:13133
 
 service:
   extensions: [health_check]
@@ -25,3 +28,11 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlphttp]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
