@@ -66,9 +66,7 @@ def configure_structlog(*, json_output: bool | None = None) -> None:
     """
     from opentelemetry import trace
 
-    def add_trace_info(
-        logger: Any, method_name: str, event_dict: dict[str, Any]
-    ) -> dict[str, Any]:
+    def add_trace_info(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         span = trace.get_current_span()
         ctx = span.get_span_context()
         if ctx and ctx.trace_id:
