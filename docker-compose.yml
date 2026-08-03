@@ -146,10 +146,11 @@ services:
       start_period: 5s
 
   otel-collector:
-    build:
-      context: ./deploy/observability
-      dockerfile: Dockerfile
+    image: otel/opentelemetry-collector-contrib:0.115.1
     restart: unless-stopped
+    command: ["--config", "/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/observability/otelcol-dev.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - "4317:4317"
       - "4318:4318"
