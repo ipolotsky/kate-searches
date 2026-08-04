@@ -3,6 +3,9 @@
 // с tenant_id, резолвленным через getUserAndTenant(). Сырые ошибки API наружу не текут:
 // возвращаем {ok:false, code}, код мапится в i18n.
 
+import { trace, context } from "@opentelemetry/api";
+import { randomUUID } from "crypto";
+
 export interface InternalOk<T> {
   ok: true;
   data: T;
@@ -55,14 +58,33 @@ const request = async <T>(
   options: RequestOptions,
 ): Promise<InternalResult<T>> => {
   const timeoutMs = options.timeoutMs ?? 5000;
-  const first = await attempt<T>(path, init, timeoutMs);
+
+  // Инжектим trace context + request_id для корреляции web → api
+  const headers = new Headers(init.headers as HeadersInit);
+  const requestId = randomUUID();
+  headers.set("x-request-id", requestId);
+
+  const span = trace.getSpan(context.active());
+  if (span) {
+    const spanContext = span.spanContext();
+    if (spanContext.traceId) {
+      headers.set(
+        "traceparent",
+        `00-${spanContext.traceId}-${spanContext.spanId}-01`,
+      );
+    }
+  }
+
+  const enrichedInit = { ...init, headers };
+
+  const first = await attempt<T>(path, enrichedInit, timeoutMs);
   // Один ретрай только на networkError: переживаем cutover api при docker rollout
   // (connection refused/reset — запрос почти всегда не дошёл до сервера, повтор безопасен).
   if (first.ok || first.code !== "networkError") {
     return first;
   }
   await new Promise<void>((x) => setTimeout(x, 300));
-  return attempt<T>(path, init, timeoutMs);
+  return attempt<T>(path, enrichedInit, timeoutMs);
 };
 
 export const postInternal = async <T = unknown>(

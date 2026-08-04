@@ -22,6 +22,7 @@ dependencies = [
     "resend>=2.0",
     "jinja2>=3.1",
     "svix>=1.0",
+    "structlog>=24.0",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +34,17 @@ dev = [
 ]
 scraper = [
     "crawl4ai>=0.4",
+]
+otel = [
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-exporter-otlp>=1.28",
+    "opentelemetry-instrumentation-fastapi>=0.49b",
+    "opentelemetry-instrumentation-httpx>=0.49b",
+    "opentelemetry-instrumentation-celery>=0.49b",
+    "opentelemetry-instrumentation-redis>=0.49b",
+    "opentelemetry-instrumentation-logging>=0.49b",
+    "opentelemetry-instrumentation-sqlalchemy>=0.49b",
 ]
 
 [tool.ruff]

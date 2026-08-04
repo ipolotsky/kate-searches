@@ -8,6 +8,11 @@ from app import __version__
 from app.api import router
 from app.config import settings
 from app.db.engine import engine
+from app.observability import configure_structlog, setup_otel
+
+if settings.otel_enabled:
+    setup_otel(service_name=settings.otel_service_name)
+configure_structlog()
 
 app = FastAPI(title="KateSearches API", version=__version__)
 app.include_router(router)

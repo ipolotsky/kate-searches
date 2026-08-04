@@ -1,7 +1,12 @@
-.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate db-types install seed-admin seed-looton
+.PHONY: up down web api worker beat lint test test-integration db-reset db-migrate db-types install seed-admin seed-looton obs-up obs-down obs-logs
 
 up:            ## поднять локальную инфру (Supabase CLI + Redis)
 	supabase start
+	@echo "Waiting for Supabase Postgres..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "SELECT 1" >/dev/null 2>&1 && break; \
+		echo "  waiting... ($$i)"; sleep 2; \
+	done
 	docker compose up -d
 
 down:          ## остановить инфру
@@ -56,3 +61,12 @@ seed-admin:    ## выдать платформенного (супер) адм�
 seed-looton:   ## залить пилот LOOTON, идемпотентно. Локально: make seed-looton. Прод: make seed-looton DB=<url> ARGS="--owner-email kate@..."
 	cd services/api && DATABASE_URL="$(or $(DB),postgresql://postgres:postgres@localhost:54322/postgres)" \
 		. .venv/bin/activate && python scripts/seed_looton.py $(or $(ARGS),--create)
+
+obs-up:         ## поднять Observability stack (OTel Collector + VictoriaLogs)
+	docker compose up -d otel-collector victorialogs
+
+obs-down:       ## остановить Observability stack
+	docker compose rm -fsv otel-collector victorialogs
+
+obs-logs:       ## логи OTel Collector + VictoriaLogs
+	docker compose logs -f otel-collector victorialogs

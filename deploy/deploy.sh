@@ -14,6 +14,41 @@ if [ ! -f "$DIR/.env" ]; then
   exit 1
 fi
 
+# --- Сеть obs (общая для app + observability) ---
+if ! docker network inspect obs >/dev/null 2>&1; then
+  docker network create obs
+fi
+
+# --- Observability stack (общий на prod + stage) ---
+# Домены берём из существующих .env окружений, basic-auth — из GitHub secret VL_BASIC_AUTH.
+OBS_DIR="$ROOT/observability"
+
+if [ -f "$OBS_DIR/compose.yml" ]; then
+  if [ -z "${VL_BASIC_AUTH:-}" ]; then
+    echo "WARNING: VL_BASIC_AUTH not set — observability stack skipped" >&2
+  else
+    # Читаем DOMAIN из .env каждого окружения
+    if [ -f "$ROOT/prod/.env" ]; then
+      PROD_OBS_DOMAIN="$(grep -E '^DOMAIN=' "$ROOT/prod/.env" | cut -d= -f2- || true)"
+    fi
+    if [ -f "$ROOT/stage/.env" ]; then
+      STAGING_OBS_DOMAIN="$(grep -E '^DOMAIN=' "$ROOT/stage/.env" | cut -d= -f2- || true)"
+    fi
+
+    if [ -n "${PROD_OBS_DOMAIN:-}" ] || [ -n "${STAGING_OBS_DOMAIN:-}" ]; then
+      cd "$OBS_DIR"
+      export COMPOSE_FILE=compose.yml
+      export COMPOSE_PROJECT_NAME=observability
+      export PROD_OBS_DOMAIN STAGING_OBS_DOMAIN
+      if ! docker compose up -d; then
+        echo "WARNING: observability stack failed to start — logs will not be collected" >&2
+      fi
+      cd "$DIR"
+    fi
+  fi
+fi
+
+# --- App stack ---
 # держим compose рядом с .env: project directory резолвится в $DIR, env_file: .env -> $DIR/.env
 cp "$ROOT/compose.yml" "$DIR/compose.yml"
 cd "$DIR"

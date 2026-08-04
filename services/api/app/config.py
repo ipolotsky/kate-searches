@@ -58,5 +58,11 @@ class Settings(BaseSettings):
     # модели (draft ~20-60с), иначе reaper освободит живой claim и статья перегенерится.
     claim_stale_minutes: int = 30
 
+    # OpenTelemetry (Phase A: логи). OTEL_ENABLED=true включает OTel SDK + авто-инструментацию.
+    otel_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    otel_service_name: str = "kate-api"
+    otel_resource_attributes: str = ""
+
 
 settings = Settings()

@@ -15,10 +15,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 RUN python -m venv /opt/venv
 WORKDIR /app
-# deps layer: only the manifest is present -> installs [project.dependencies] (the empty app
-# package builds fine). Cached until pyproject.toml changes.
+# deps layer: only the manifest is present -> installs [project.dependencies] + OTel extras
+# for observability. Cached until pyproject.toml changes.
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
+RUN pip install --upgrade pip && pip install ".[otel]"
 # source in a later layer so code edits do not invalidate the deps layer
 COPY . .
 

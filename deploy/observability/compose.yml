@@ -1,0 +1,63 @@
+# Observability stack: OTel Collector + VictoriaLogs.
+# Один общий стек на prod + stage. Данные разделяются меткой env/service.namespace.
+# Traefik роутит vl.<DOMAIN> из .env каждого окружения → victorialogs:9428,
+# с отдельным basic-auth для prod и staging.
+name: observability
+
+networks:
+  proxy:
+    external: true
+  obs:
+    external: true
+
+services:
+  victorialogs:
+    image: victoriametrics/victoria-logs:latest
+    restart: unless-stopped
+    command:
+      - -retentionPeriod=14d
+      - -retention.maxDiskSpaceUsageBytes=2147483648
+      - -storageDataPath=/victorialogs-data
+    volumes:
+      - vl_data:/victorialogs-data
+    networks: [proxy, obs]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "/victoria-logs-prod", "-version"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      # --- Prod UI: vl.<DOMAIN из prod .env> ---
+      - traefik.http.routers.vl-prod.rule=Host(`vl.${PROD_OBS_DOMAIN:?PROD_OBS_DOMAIN is required}`)
+      - traefik.http.routers.vl-prod.entrypoints=websecure
+      - traefik.http.routers.vl-prod.tls.certresolver=le
+      - traefik.http.routers.vl-prod.middlewares=vl-auth
+      # --- Staging UI: vl.<DOMAIN из stage .env> ---
+      - traefik.http.routers.vl-stage.rule=Host(`vl.${STAGING_OBS_DOMAIN:?STAGING_OBS_DOMAIN is required}`)
+      - traefik.http.routers.vl-stage.entrypoints=websecure
+      - traefik.http.routers.vl-stage.tls.certresolver=le
+      - traefik.http.routers.vl-stage.middlewares=vl-auth
+      # --- Auth (один пароль на оба окружения) ---
+      - traefik.http.middlewares.vl-auth.basicauth.users=${VL_BASIC_AUTH:?VL_BASIC_AUTH is required}
+      # --- Service ---
+      - traefik.http.services.vl.loadbalancer.server.port=9428
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    restart: unless-stopped
+    command: ["--config", "/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otelcol.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks: [obs]
+    mem_limit: 128m
+    depends_on:
+      victorialogs:
+        condition: service_healthy
+
+volumes:
+  vl_data:

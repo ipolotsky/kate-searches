@@ -18,3 +18,4 @@ okf_version: "0.2"
 - [ADR-0007 — Скоуп MVP: полноценный self-serve мультитенант](0007-mvp-full-selfserve-multitenant.md)
 - [ADR-0008 — Биллинга нет в MVP, только cost-metering](0008-no-billing-mvp-cost-metering.md)
 - [ADR-0009 — Юрисдикция: глобально / не-РФ](0009-jurisdiction-global-non-ru.md)
+- [ADR-0010 — Наблюдаемость: OpenTelemetry + VictoriaLogs](0010-observability-otel-victorialogs.md)

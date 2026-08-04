@@ -88,7 +88,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: "deploy/compose.yml,deploy/deploy.sh"
+          source: "deploy/compose.yml,deploy/deploy.sh,deploy/observability/compose.yml,deploy/observability/otelcol.yaml"
           target: "/srv/kate-searches"
           strip_components: 1
       - name: rollout on VM
@@ -98,6 +98,9 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # Observability basic-auth (домены берутся из .env окружений)
+            export VL_BASIC_AUTH="${{ secrets.VL_BASIC_AUTH }}"
+
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             chmod +x /srv/kate-searches/deploy.sh
             /srv/kate-searches/deploy.sh stage ${{ env.TAG }} ${{ env.TAG }}

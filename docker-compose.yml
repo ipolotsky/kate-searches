@@ -1,6 +1,7 @@
 # Локальная инфра для разработки.
 # Postgres + Auth дают Supabase CLI (supabase start): Postgres :54322, GoTrue :54321.
-# Здесь — вспомогательные сервисы: Redis (брокер Celery), LiteLLM proxy, Langfuse v2.
+# Здесь — вспомогательные сервисы: Redis (брокер Celery), LiteLLM proxy, Langfuse v2,
+# OTel Collector + VictoriaLogs (наблюдаемость, Phase A).
 # Прод (VPS) настроим позже отдельно.
 services:
   redis:
@@ -23,24 +24,58 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-worker
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - obs
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app inspect ping --timeout 5 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Celery beat: heartbeat диспетчера дневных прогонов (per-tenant tz).
   beat:
     build: ./services/api
-    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info"]
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info", "--schedule", "/tmp/celerybeat-schedule"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:54322/postgres}
       REDIS_URL: redis://redis:6379/0
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-beat
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - obs
+    healthcheck:
+      test: ["CMD-SHELL", "cat /proc/1/cmdline | grep -q celery || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # LiteLLM proxy: единый вход к провайдерам, роутинг по стадиям, per-tenant бюджеты.
   litellm:
@@ -100,5 +135,49 @@ services:
       LANGFUSE_INIT_USER_NAME: Dev
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-localdevpassword}
 
+  # --- Observability (Phase A: logs) ---
+  victorialogs:
+    image: victoriametrics/victoria-logs:latest
+    restart: unless-stopped
+    command:
+      - -retentionPeriod=1d
+      - -retention.maxDiskSpaceUsageBytes=536870912
+      - -storageDataPath=/victorialogs-data
+    volumes:
+      - vl_data:/victorialogs-data
+    ports:
+      - "9428:9428"
+    networks:
+      - obs
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "/victoria-logs-prod", "-version"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.1
+    restart: unless-stopped
+    command: ["--config", "/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./deploy/observability/otelcol-dev.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+    networks:
+      - obs
+    mem_limit: 128m
+    depends_on:
+      victorialogs:
+        condition: service_healthy
+
 volumes:
   langfuse_pgdata:
+  vl_data:
+
+networks:
+  obs:
+    driver: bridge

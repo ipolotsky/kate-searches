@@ -1,0 +1,59 @@
+receivers:
+  filelog:
+    include:
+      - /var/lib/docker/containers/**/*-json.log
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.time
+          layout: "%Y-%m-%dT%H:%M:%S.%s"
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: unknown
+        action: upsert
+  filter:
+    error_mode: ignore
+    logs:
+      exclude:
+        match_type: regexp
+        resource_attributes:
+          - key: container.name
+            value: "healthcheck|redis|otel-collector|victorialogs"
+  batch:
+    timeout: 5s
+    send_batch_size: 100
+
+exporters:
+  otlphttp:
+    endpoint: http://victorialogs:9428/insert/opentelemetry
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    logs:
+      receivers: [filelog, otlp]
+      processors: [resource, filter, batch]
+      exporters: [otlphttp]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

@@ -14,6 +14,8 @@ networks:
     external: true
   internal:
     driver: bridge
+  obs:
+    external: true
 
 services:
   web:
@@ -23,7 +25,10 @@ services:
     environment:
       API_BASE_URL: http://api:8000
       PORT: "3000"
-    networks: [proxy, internal]
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-web
+    networks: [proxy, internal, obs]
     mem_limit: ${WEB_MEM:-640m}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
@@ -45,7 +50,10 @@ services:
     env_file: [.env]
     environment:
       REDIS_URL: redis://redis:6379/0
-    networks: [internal]
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-api
+    networks: [internal, obs]
     mem_limit: ${API_MEM:-512m}
     depends_on:
       redis:
@@ -64,7 +72,10 @@ services:
     env_file: [.env]
     environment:
       REDIS_URL: redis://redis:6379/0
-    networks: [internal]
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-worker
+    networks: [internal, obs]
     mem_limit: ${WORKER_MEM:-768m}
     depends_on:
       redis:
@@ -86,7 +97,10 @@ services:
     env_file: [.env]
     environment:
       REDIS_URL: redis://redis:6379/0
-    networks: [internal]
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: kate-beat
+    networks: [internal, obs]
     mem_limit: ${BEAT_MEM:-160m}
     depends_on:
       redis:

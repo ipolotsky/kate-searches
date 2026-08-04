@@ -28,7 +28,12 @@
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "stripe": "^22.3.0",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-trace-node": "^1.28.0",
+    "@opentelemetry/sdk-trace-base": "^1.28.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.55.0",
+    "@opentelemetry/resources": "^1.28.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
