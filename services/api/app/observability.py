@@ -64,22 +64,26 @@ def configure_structlog(*, json_output: bool | None = None) -> None:
     Args:
         json_output: None = авто (JSON если не tty), True = всегда JSON, False = всегда console.
     """
-    from opentelemetry import trace
+    if json_output is None:
+        json_output = not sys.stderr.isatty()
+
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        trace = None  # type: ignore[assignment]
 
     def add_trace_info(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        span = trace.get_current_span()
-        ctx = span.get_span_context()
-        if ctx and ctx.trace_id:
-            event_dict["trace_id"] = format(ctx.trace_id, "032x")
-            event_dict["span_id"] = format(ctx.span_id, "016x")
+        if trace is not None:
+            span = trace.get_current_span()
+            ctx = span.get_span_context()
+            if ctx and ctx.trace_id:
+                event_dict["trace_id"] = format(ctx.trace_id, "032x")
+                event_dict["span_id"] = format(ctx.span_id, "016x")
         event_dict["request_id"] = request_id_ctx.get("")
         event_dict["tenant_id"] = tenant_id_ctx.get("")
         event_dict["user_id"] = user_id_ctx.get("")
         event_dict["stage"] = stage_ctx.get("")
         return event_dict
-
-    if json_output is None:
-        json_output = not sys.stderr.isatty()
 
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
