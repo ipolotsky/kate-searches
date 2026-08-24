@@ -43,7 +43,7 @@ export default async function DashboardPage({
 
   const candidatesResult = await supabase
     .from("articles")
-    .select("id, url, title, relevance_score, relevance, source_id")
+    .select("id, url, title, relevance_score, relevance, source_id, created_at")
     .eq("status", "scored")
     .order("relevance_score", { ascending: false, nullsFirst: false });
   if (candidatesResult.error != null) {
@@ -98,16 +98,26 @@ export default async function DashboardPage({
     };
   });
 
+  const now = Date.now();
+  const recentThreshold = now - 24 * 60 * 60 * 1000;
+
   const candidates: CandidateView[] = candidateRows
     .filter((row) => !draftedArticleIds.has(row.id))
-    .map((row) => ({
-      id: row.id,
-      title: row.title ?? "",
-      url: row.url,
-      score: row.relevance_score,
-      priority: priorityOf(row.relevance),
-      source: row.source_id != null ? (sourceById.get(row.source_id) ?? null) : null,
-    }));
+    .map((row) => {
+      const createdAt = row.created_at ?? "";
+      const parsedTime = createdAt.length > 0 ? Date.parse(createdAt) : NaN;
+      const isNew = Number.isFinite(parsedTime) ? parsedTime >= recentThreshold : false;
+      return {
+        id: row.id,
+        title: row.title ?? "",
+        url: row.url,
+        score: row.relevance_score,
+        priority: priorityOf(row.relevance),
+        source: row.source_id != null ? (sourceById.get(row.source_id) ?? null) : null,
+        createdAt,
+        isNew,
+      };
+    });
 
   const feed: FeedItemView[] = feedRows.map((row) => {
     const relevance = parseRelevance(row.relevance);

@@ -62,7 +62,11 @@
       "nothing": "Those stories are no longer eligible for drafting.",
       "failed": "Could not start generation",
       "budgetExceeded": "Monthly budget reached — generation is paused. See Usage.",
-      "selectAll": "Select all"
+      "selectAll": "Select all",
+      "recentTitle": "Recent stories",
+      "previousTitle": "Previous stories",
+      "selectAllRecent": "Select all recent",
+      "selectAllPrevious": "Select all previous"
     },
     "runPipeline": {
       "action": "Run pipeline",

@@ -104,3 +104,9 @@ export const AdminIcon: React.FC<IconProps> = (props) => (
     />
   </svg>
 );
+
+export const ChevronDownIcon: React.FC<IconProps> = (props) => (
+  <svg {...base(props)}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+  </svg>
+);
