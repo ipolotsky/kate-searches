@@ -112,7 +112,7 @@ $$;
 -- ВАЖНО: revoke от public, а не только anon/authenticated. У функций есть дефолтный EXECUTE
 -- для PUBLIC; revoke конкретных ролей его НЕ снимает (роли наследуют execute через PUBLIC),
 -- иначе security-definer обходит RLS и authenticated-тенант читает кросс-тенант данные всех.
-revoke execute on function admin_tenant_report(timestamptz) from public;
+revoke execute on function admin_tenant_report(timestamptz) from anon, authenticated, public;
 grant execute on function admin_tenant_report(timestamptz) to service_role;
 
 -- Разбивка расхода конкретного тенанта по стадиям (карточка тенанта в админке). security definer
@@ -132,5 +132,5 @@ as $$
 $$;
 
 -- См. примечание выше: revoke от public обязателен, чтобы definer не был вызываем тенантом.
-revoke execute on function admin_tenant_usage_by_stage(uuid, timestamptz) from public;
+revoke execute on function admin_tenant_usage_by_stage(uuid, timestamptz) from anon, authenticated, public;
 grant execute on function admin_tenant_usage_by_stage(uuid, timestamptz) to service_role;

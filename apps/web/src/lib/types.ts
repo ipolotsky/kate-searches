@@ -88,6 +88,8 @@ export interface CandidateView {
   score: number | null;
   priority: Priority | null;
   source: SourceRef | null;
+  createdAt: string;
+  isNew: boolean;
 }
 
 // View-model строки «потока скоринга»: любая статья, прошедшая скоринг (scored/filtered_out/drafted),
